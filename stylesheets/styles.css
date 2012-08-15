@@ -1,8 +1,9 @@
-@import url(https://fonts.googleapis.com/css?family=Lato:300italic,700italic,300,700);
+/*@import url(https://fonts.googleapis.com/css?family=Lato:300italic,700italic,300,700);*/
+@import url(https://fonts.googleapis.com/css?family=Capriola);
 
 body {
   padding:50px;
-  font:14px/1.5 Lato, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font:14px/1.5 Capriola, "Helvetica Neue", Helvetica, Arial, sans-serif;
   color:#000;
   font-weight:300;
 }
@@ -35,7 +36,7 @@ h3, h4, h5, h6 {
 a {
   color:#39c;
   font-weight:400;
-  text-decoration:none;
+  text-decoration:underline;
 }
 
 a small {
