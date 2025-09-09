@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PEP 440 Specifier Helper</title>
+  <style>
+    :root {
+      --bg: #0f1221;
+      --card: #151935;
+      --muted: #8791c4;
+      --text: #e9ecff;
+      --accent: #7c9bff;
+      --accent-2: #a5ffd6;
+      --danger: #ff8f8f;
+      --ok: #b0ff9d;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 16px;
+    }
+    html, body {
+      height: 100%;
+      background: radial-gradient(1200px 800px at 80% -10%, rgba(124,155,255,.25), transparent 60%),
+                  radial-gradient(1200px 900px at -10% 110%, rgba(165,255,214,.15), transparent 60%),
+                  var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      line-height: 1.5;
+      margin: 0;
+    }
+    .wrap {
+      max-width: 920px;
+      margin: 40px auto;
+      padding: 0 16px 80px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: clamp(22px, 3vw, 32px);
+      margin: 0;
+      letter-spacing: .2px;
+    }
+    .badge {
+      font-size: 12px;
+      padding: 6px 10px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.04);
+      border-radius: 999px;
+      color: var(--muted);
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    @media (min-width: 860px) {
+      .grid-2 { grid-template-columns: 1fr 1fr; }
+    }
+    label { display:block; font-weight:600; margin-bottom:6px; }
+    .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+    input[type="text"], textarea {
+      width: 100%;
+      background: #0d1127;
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 12px;
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 15px;
+      outline: none;
+      transition: border .15s ease, box-shadow .15s ease;
+    }
+    input[type="text"]:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(124,155,255,.15);
+    }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    button {
+      appearance: none;
+      background: linear-gradient(180deg, var(--accent), #5d81ff);
+      color: #0b1025;
+      font-weight: 700;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      transition: transform .06s ease, filter .2s ease, box-shadow .2s ease;
+    }
+    button:hover { filter: brightness(1.05); }
+    button:active { transform: translateY(1px); }
+    button.secondary {
+      background: linear-gradient(180deg, #2b305b, #1c2147);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    .output {
+      margin-top: 12px;
+      background: #0d1127;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 15px;
+      white-space: pre-wrap;
+    }
+    .pill { display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; margin-right:6px; border:1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); color:var(--muted) }
+    .ok { color: var(--ok); }
+    .danger { color: var(--danger); }
+    .muted { color: var(--muted); }
+    .examples { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; }
+    footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background:#0d1127; padding:2px 6px; border-radius:6px; border:1px solid rgba(255,255,255,.07); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>PEP 440 Specifier Helper</h1>
+    </header>
+
+    <div class="grid grid-2">
+      <!-- Explain -->
+      <section class="card">
+        <h2 style="margin-top:0">Explain a specifier</h2>
+        <label for="specInput">Specifier</label>
+        <input id="specInput" type="text" placeholder="e.g. ~=4.1 or >=1.20,<2.0 or ==1.2.*" />
+        <div class="row" style="margin-top:10px">
+          <button id="explainBtn">Explain</button>
+          <button id="clearExplain" class="secondary">Clear</button>
+        </div>
+        <div id="explainOut" class="output" aria-live="polite"></div>
+        <p class="hint">Supports common PEP 440 operators: <span class="code">==</span>, <span class="code">!=</span>, <span class="code">&lt;</span>, <span class="code">&lt;=</span>, <span class="code">&gt;</span>, <span class="code">&gt;=</span>, <span class="code">~=</span> and wildcards like <span class="code">==1.2.*</span>. Combine with commas for AND, e.g. <span class="code">&gt;=1.19,&lt;2.0</span>.</p>
+      </section>
+
+      <!-- Compare -->
+      <section class="card">
+        <h2 style="margin-top:0">Compare two specifiers</h2>
+        <label for="specA">Specifier A</label>
+        <input id="specA" type="text" placeholder="e.g. ~=4.1" />
+        <label for="specB" style="margin-top:10px">Specifier B</label>
+        <input id="specB" type="text" placeholder="e.g. &gt;=4.1,&lt;5.0" />
+        <div class="row" style="margin-top:10px">
+          <button id="cmpBtn">Compare</button>
+          <button id="clearCmp" class="secondary">Clear</button>
+        </div>
+        <div id="cmpOut" class="output" aria-live="polite"></div>
+        <p class="hint">If an exact proof isn’t possible for complex combos, the app provides strong evidence with dense sampling and examples where they differ.</p>
+      </section>
+    </div>
+
+    <footer>
+      <strong>Notes</strong>: Implements practical PEP 440 coverage (release segments with integers). Pre/dev/local segments are ignored for simplicity. Compatible release <span class="code">~=X.Y[.Z...]</span> expands to <span class="code">&gt;=X.Y[.Z...]</span> and <span class="code">&lt;next bump of the penultimate segment</span> (e.g. <span class="code">~=4.1</span> ⇒ <span class="code">&lt;5.0</span>; <span class="code">~=1.4.5</span> ⇒ <span class="code">&lt;1.5.0</span>). Wildcard equality <span class="code">==1.2.*</span> means all 1.2.x releases ⇒ <span class="code">&gt;=1.2,&lt;1.3</span>.
+    </footer>
+  </div>
+
+  <script>
+    // -------------------------
+    // Version utilities
+    // -------------------------
+    const reToken = /^(===|==|!=|~=|<=|>=|<|>)\s*(.+)$/;
+
+    function parseSpecifierList(input) {
+      if (!input || !input.trim()) throw new Error('Empty specifier.');
+      const parts = input.split(',').map(s => s.trim()).filter(Boolean);
+      return parts.map(parseOneSpecifier);
+    }
+
+    function parseOneSpecifier(s) {
+      const m = s.match(reToken);
+      if (!m) throw new Error(`Invalid specifier token: "${s}"`);
+      const op = m[1];
+      const vraw = m[2].trim();
+      // Wildcard support for == and != like ==1.2.*
+      const hasWildcard = /\*$/.test(vraw);
+      let base = vraw.replace(/\s+/g, '');
+      if (hasWildcard) base = base.replace(/\.*$/, '');
+
+      // Allow simple release segments only: a.b.c ... integers
+      const segs = base.split('.').filter(Boolean).map(x => {
+        if (!/^\d+$/.test(x)) throw new Error(`Non-integer segment in "${s}"`);
+        return parseInt(x, 10);
+      });
+      if (segs.length === 0) throw new Error(`Missing version number in "${s}"`);
+      return { op, segs, hasWildcard, raw: s };
+    }
+
+    function segsToStr(segs) { return segs.join('.'); }
+
+    function bumpForCompatible(segs) {
+      // PEP 440: ~=X.Y[.Z...] == >=X.Y[.Z...] and <X.(Y+1).0... (bump penultimate segment)
+      const out = segs.slice();
+      if (out.length === 1) {
+        return [out[0] + 1, 0]; // ~=1 -> <2.0
+      }
+      const pen = out.length - 2;
+      out[pen] = out[pen] + 1;
+      for (let i = pen + 1; i < out.length; i++) out[i] = 0;
+      return out;
+    }
+
+    function nextAfterWildcard(segs) {
+      // ==1.2.* -> <1.3.0... (bump last explicit segment)
+      const out = segs.slice();
+      const last = out.length - 1;
+      out[last] = out[last] + 1;
+      for (let i = last + 1; i < out.length; i++) out[i] = 0;
+      return out;
+    }
+
+    // Compare two version arrays lexicographically
+    function cmp(a, b) {
+      const len = Math.max(a.length, b.length);
+      for (let i = 0; i < len; i++) {
+        const ai = a[i] ?? 0; const bi = b[i] ?? 0;
+        if (ai < bi) return -1;
+        if (ai > bi) return 1;
+      }
+      return 0;
+    }
+
+    // Normalize a specifier list to conjunctive constraints: lower bound(s), upper bound(s), eq sets, not-eq sets
+    function normalize(specs) {
+      const out = {
+        lowers: [], // { cmp: '>= or >', v }
+        uppers: [], // { cmp: '<= or <', v }
+        equals: [], // array of exact version arrays (no wildcard)
+        ranges: [], // ranges generated from wildcard equality
+        notEquals: [] // versions to exclude (exact)
+      };
+
+      for (const t of specs) {
+        const { op, segs, hasWildcard, raw } = t;
+        switch (op) {
+          case '==': {
+            if (hasWildcard) {
+              const upper = nextAfterWildcard(segs);
+              out.ranges.push({ low: { v: segs, cmp: '>=' }, high: { v: upper, cmp: '<' }, raw });
+            } else {
+              out.equals.push(segs);
+            }
+            break;
+          }
+          case '!=': {
+            if (hasWildcard) {
+              // \!= with wildcard is tricky; conservatively treat as excluding that whole prefix range
+              const upper = nextAfterWildcard(segs);
+              out.ranges.push({ low: { v: [0], cmp: '>=' }, high: { v: [999999], cmp: '<=' }, exclude: { low: { v: segs, cmp: '>=' }, high: { v: upper, cmp: '<' } }, raw });
+            } else {
+              out.notEquals.push(segs);
+            }
+            break;
+          }
+          case '~=': {
+            const upper = bumpForCompatible(segs);
+            out.lowers.push({ v: segs, cmp: '>=' });
+            out.uppers.push({ v: upper, cmp: '<' });
+            break;
+          }
+          case '>=': out.lowers.push({ v: segs, cmp: '>=' }); break;
+          case '>':  out.lowers.push({ v: segs, cmp: '>'  }); break;
+          case '<=': out.uppers.push({ v: segs, cmp: '<=' }); break;
+          case '<':  out.uppers.push({ v: segs, cmp: '<'  }); break;
+          case '===': // treat as exact (arbitrary equality). Here equal to == for simplicity.
+            out.equals.push(segs); break;
+          default:
+            throw new Error(`Unsupported operator in "${raw}"`);
+        }
+      }
+      return out;
+    }
+
+    // Test if a concrete version matches a specifier list
+    function matchesVersion(specs, v) {
+      for (const t of specs) {
+        const { op, segs, hasWildcard } = t;
+        const c = cmp(v, segs);
+        switch (op) {
+          case '==': if (hasWildcard) { if (!(c >= 0 && cmp(v, nextAfterWildcard(segs)) < 0)) return false; } else if (c !== 0) return false; break;
+          case '!=': if (!hasWildcard) { if (c === 0) return false; } else { if (c >= 0 && cmp(v, nextAfterWildcard(segs)) < 0) return false; } break;
+          case '>=': if (c < 0) return false; break;
+          case '>': if (c <= 0) return false; break;
+          case '<=': if (c > 0) return false; break;
+          case '<': if (c >= 0) return false; break;
+          case '~=': if (!(c >= 0 && cmp(v, bumpForCompatible(segs)) < 0)) return false; break;
+          case '===': if (c !== 0) return false; break;
+          default: return false;
+        }
+      }
+      return true;
+    }
+
+    // Generate sample release versions for evidence/visualization
+    function* sampleVersions(maxMajor=9, maxMinor=19, maxPatch=19) {
+      for (let M = 0; M <= maxMajor; M++) {
+        for (let m = 0; m <= maxMinor; m++) {
+          // Include a couple of patch points to keep dense near edges
+          yield [M, m];
+          for (let p of [0, 1, 2, 5, 9, 19]) {
+            yield [M, m, p];
+          }
+        }
+      }
+    }
+
+    function explain(specStr) {
+      const specs = parseSpecifierList(specStr);
+      const norm = normalize(specs);
+
+      const bits = [];
+      for (const s of specs) {
+        if (s.op === '~=') {
+          const upper = bumpForCompatible(s.segs);
+          bits.push(`• ${s.raw}  ⇒  >=${segsToStr(s.segs)} and <${segsToStr(upper)}`);
+        } else if (s.op === '==') {
+          if (s.hasWildcard) {
+            const upper = nextAfterWildcard(s.segs);
+            bits.push(`• ${s.raw}  ⇒  all releases from ${segsToStr(s.segs)} up to (but not including) ${segsToStr(upper)}`);
+          } else {
+            bits.push(`• ${s.raw}  ⇒  exactly version ${segsToStr(s.segs)}`);
+          }
+        } else if (s.op === '!=') {
+          bits.push(`• ${s.raw}  ⇒  not equal to ${segsToStr(s.segs)}${s.hasWildcard ? '.*' : ''}`);
+        } else {
+          bits.push(`• ${s.raw}`);
+        }
+      }
+
+      // Create an English summary for combined bounds
+      const lowers = norm.lowers.map(l => `${l.cmp}${segsToStr(l.v)}`);
+      const uppers = norm.uppers.map(u => `${u.cmp}${segsToStr(u.v)}`);
+      const eqs = norm.equals.map(segsToStr);
+      const neqs = norm.notEquals.map(segsToStr);
+
+      const summary = [];
+      if (eqs.length) summary.push(`exactly ${eqs.map(v=>`v${v}`).join(' or ')}`);
+      if (lowers.length || uppers.length) summary.push([ ...lowers, ...uppers ].join(' and '));
+      if (norm.ranges.length) {
+        for (const r of norm.ranges) {
+          if (r.exclude) {
+            summary.push(`any version, except those in >=${segsToStr(r.exclude.low.v)} and <${segsToStr(r.exclude.high.v)}`);
+          } else {
+            summary.push(`from ${r.low.cmp}${segsToStr(r.low.v)} to ${r.high.cmp}${segsToStr(r.high.v)}`);
+          }
+        }
+      }
+      if (neqs.length) summary.push(`but excluding ${neqs.map(v=>`v${v}`).join(', ')}`);
+
+      // Example versions that match/do not match
+      const matches = [];
+      const misses = [];
+      let seenMatch = 0, seenMiss = 0;
+      for (const v of sampleVersions(5, 8, 8)) {
+        const ok = matchesVersion(specs, v);
+        const s = segsToStr(v);
+        if (ok && seenMatch < 8) { matches.push(s); seenMatch++; }
+        if (!ok && seenMiss < 8) { misses.push(s); seenMiss++; }
+        if (seenMatch >= 8 && seenMiss >= 8) break;
+      }
+
+      return {
+        bullets: bits.join('\n'),
+        summary: summary.length ? summary.join('; ') : 'No combined bounds to summarize.',
+        examples: { matches, misses }
+      };
+    }
+
+    function compare(aStr, bStr) {
+      const A = parseSpecifierList(aStr);
+      const B = parseSpecifierList(bStr);
+
+      // Fast-path proofs for some common equivalences
+      function canonical(specs) {
+        // reduce to simple pair of bounds when possible
+        let lower = null, upper = null, exact = null;
+        let valid = true;
+        for (const t of specs) {
+          if (t.op === '==') {
+            if (t.hasWildcard) {
+              const u = nextAfterWildcard(t.segs);
+              if (lower && cmp(lower.v, t.segs) > 0) lower = lower; else lower = { v: t.segs, cmp: '>=' };
+              if (upper && cmp(upper.v, u) < 0) upper = upper; else upper = { v: u, cmp: '<' };
+            } else {
+              if (exact && cmp(exact, t.segs) !== 0) { valid = false; break; }
+              exact = t.segs;
+            }
+          } else if (t.op === '~=') {
+            const u = bumpForCompatible(t.segs);
+            lower = lower && cmp(lower.v, t.segs) > 0 ? lower : { v: t.segs, cmp: '>=' };
+            upper = upper && cmp(upper.v, u) < 0 ? upper : { v: u, cmp: '<' };
+          } else if (t.op === '>=' || t.op === '>') {
+            lower = lower && cmp(lower.v, t.segs) > 0 ? lower : { v: t.segs, cmp: t.op };
+          } else if (t.op === '<=' || t.op === '<') {
+            upper = upper && cmp(upper.v, t.segs) < 0 ? upper : { v: t.segs, cmp: t.op };
+          } else if (t.op === '!=') {
+            valid = false; break; // skip complex cases here, defer to sampling
+          } else if (t.op === '===') {
+            exact = t.segs;
+          }
+        }
+        return valid ? { lower, upper, exact } : null;
+      }
+
+      const cA = canonical(A);
+      const cB = canonical(B);
+
+      function canonEqual(c1, c2) {
+        const eqSeg = (x, y) => x && y && cmp(x, y) === 0;
+        if (c1 && c2) {
+          if (c1.exact || c2.exact) return eqSeg(c1.exact, c2.exact);
+          const bothLower = !!c1.lower && !!c2.lower;
+          const bothUpper = !!c1.upper && !!c2.upper;
+          const lowOK = (!c1.lower && !c2.lower) || (bothLower && c1.lower.cmp === c2.lower.cmp && cmp(c1.lower.v, c2.lower.v) === 0);
+          const upOK  = (!c1.upper && !c2.upper) || (bothUpper && c1.upper.cmp === c2.upper.cmp && cmp(c1.upper.v, c2.upper.v) === 0);
+          return lowOK && upOK;
+        }
+        return false;
+      }
+
+      const proof = cA && cB && canonEqual(cA, cB);
+
+      // Fallback: sampling evidence and counterexamples
+      const onlyA = [], onlyB = [];
+      for (const v of sampleVersions(9, 19, 19)) {
+        const inA = matchesVersion(A, v);
+        const inB = matchesVersion(B, v);
+        if (inA && !inB && onlyA.length < 6) onlyA.push(segsToStr(v));
+        if (!inA && inB && onlyB.length < 6) onlyB.push(segsToStr(v));
+        if (onlyA.length >= 6 && onlyB.length >= 6) break;
+      }
+
+      const equalByEvidence = onlyA.length === 0 && onlyB.length === 0;
+
+      return { proof, equalByEvidence, onlyA, onlyB, cA, cB };
+    }
+
+    // -------------------------
+    // UI wiring
+    // -------------------------
+    const explainBtn = document.getElementById('explainBtn');
+    const explainOut = document.getElementById('explainOut');
+    const specInput = document.getElementById('specInput');
+    const clearExplain = document.getElementById('clearExplain');
+
+    explainBtn.addEventListener('click', () => {
+      explainOut.textContent = '';
+      try {
+        const { bullets, summary, examples } = explain(specInput.value);
+        explainOut.innerHTML = `${bullets}\n\n<strong>In plain English:</strong> ${summary}\n\n<span class="pill">Examples that MATCH</span>\n<span class="examples">${examples.matches.join(', ') || '—'}</span>\n\n<span class="pill">Examples that DO NOT match</span>\n<span class="examples">${examples.misses.join(', ') || '—'}</span>`;
+      } catch (e) {
+        explainOut.innerHTML = `<span class="danger">${e.message}</span>`;
+      }
+    });
+
+    clearExplain.addEventListener('click', () => {
+      specInput.value = '';
+      explainOut.textContent = '';
+      specInput.focus();
+    });
+
+    const cmpBtn = document.getElementById('cmpBtn');
+    const cmpOut = document.getElementById('cmpOut');
+    const specA = document.getElementById('specA');
+    const specB = document.getElementById('specB');
+    const clearCmp = document.getElementById('clearCmp');
+
+    cmpBtn.addEventListener('click', () => {
+      cmpOut.textContent = '';
+      try {
+        const res = compare(specA.value, specB.value);
+        if (res.proof || res.equalByEvidence) {
+          const tag = res.proof ? '<span class="ok">Proved equivalent</span>' : '<span class="ok">Equivalent by dense sampling</span>';
+          const ca = res.cA, cb = res.cB;
+          const canon = (c) => c ? (c.exact ? `exact v${segsToStr(c.exact)}` : `${c.lower ? c.lower.cmp + segsToStr(c.lower.v) : ''}${c.lower && c.upper ? ' and ' : ''}${c.upper ? c.upper.cmp + segsToStr(c.upper.v) : ''}`) : '—';
+          cmpOut.innerHTML = `${tag}. Both specifiers describe the same set of release versions.\n\n<em>Canonical forms</em>\n• A: ${canon(ca)}\n• B: ${canon(cb)}`;
+        } else {
+          cmpOut.innerHTML = `<span class="danger">Not equivalent</span>. Here are examples that differ:\n\n<span class="pill">Included by A only</span>\n<span class="examples">${(res.onlyA.join(', ') || '—')}</span>\n\n<span class="pill">Included by B only</span>\n<span class="examples">${(res.onlyB.join(', ') || '—')}</span>`;
+        }
+      } catch (e) {
+        cmpOut.innerHTML = `<span class="danger">${e.message}</span>`;
+      }
+    });
+
+    clearCmp.addEventListener('click', () => {
+      specA.value = '';
+      specB.value = '';
+      cmpOut.textContent = '';
+      specA.focus();
+    });
+
+    // Convenience: prefill with a helpful example on first load
+    window.addEventListener('load', () => {
+      if (!specInput.value) specInput.value = '~=4.1';
+      if (!specA.value) specA.value = '~=4.1';
+      if (!specB.value) specB.value = '>=4.1,<5.0';
+    });
+  </script>
+</body>
+</html>
