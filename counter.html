@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talker Counter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Times New Roman', serif;
+            transition: background-color 0.3s ease;
+            overflow: hidden;
+        }
+
+        body.green-phase {
+            background-color: #32CD32; /* LimeGreen */
+        }
+
+        body.red-phase {
+            background-color: #FF4500; /* OrangeRed */
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            position: relative;
+        }
+
+        .timer-display {
+            font-size: 16rem;
+            font-weight: bold;
+            color: #000;
+            text-align: center;
+            user-select: none;
+        }
+
+        .timer-display.paused {
+            animation: blink 1s step-start infinite;
+        }
+
+        @keyframes blink {
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        body.fullscreen .timer-display {
+            font-size: 24rem;
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+        }
+
+        body.fullscreen .controls {
+            display: none;
+        }
+
+        /* Keyboard shortcuts info - always visible */
+        .shortcuts-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(160deg, rgba(255, 255, 255, 0.78), rgba(240, 243, 255, 0.58));
+            padding: 18px 22px 20px;
+            border-radius: 18px;
+            border: 1px solid rgba(145, 158, 189, 0.26);
+            backdrop-filter: blur(12px);
+            box-shadow: 0 16px 28px rgba(30, 41, 59, 0.12);
+            font-size: 14px;
+            line-height: 1.75;
+            color: #1f2937;
+        }
+
+        .shortcuts-info::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            pointer-events: none;
+        }
+
+        body.fullscreen .shortcuts-info {
+            display: none;
+        }
+
+        .shortcuts-info h4 {
+            margin: 0 0 12px 0;
+            font-size: 15px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #4338ca;
+        }
+
+        .shortcuts-info ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            gap: 8px;
+        }
+
+        .shortcuts-info li {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .shortcuts-info strong {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 70px;
+            padding: 6px 10px;
+            border-radius: 10px;
+            background: rgba(67, 56, 202, 0.12);
+            color: #312e81;
+            font-weight: 700;
+            font-size: 13px;
+        }
+
+        .shortcuts-info span {
+            color: #1f2937;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            font-size: 14px;
+            background-color: #f0f0f0;
+            border: 1px solid #999;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .btn:hover {
+            background-color: #e0e0e0;
+        }
+
+        .btn:active {
+            background-color: #d0d0d0;
+        }
+
+        /* Settings Modal */
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            background: rgba(0, 0, 0, 0.35);
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .modal.active {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(245, 247, 252, 0.98));
+            padding: 32px 36px;
+            border-radius: 16px;
+            min-width: 320px;
+            max-width: min(90vw, 520px);
+            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+        }
+
+        .modal-header {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 18px;
+            color: #1f2937;
+            letter-spacing: 0.3px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            gap: 12px;
+        }
+
+        .modal-buttons .btn {
+            flex: 1 1 auto;
+            background: linear-gradient(135deg, #4f46e5, #6366f1);
+            color: #fff;
+            border: none;
+        }
+
+        .modal-buttons .btn:hover {
+            box-shadow: 0 12px 20px rgba(79, 70, 229, 0.25);
+        }
+
+        .modal-buttons .btn:active {
+            box-shadow: 0 8px 14px rgba(79, 70, 229, 0.2);
+        }
+
+        .modal-buttons .btn:last-child {
+            background: linear-gradient(135deg, #9ca3af, #6b7280);
+        }
+
+        .modal-buttons .btn:last-child:hover {
+            box-shadow: 0 12px 20px rgba(107, 114, 128, 0.25);
+        }
+
+        .modal-buttons .btn:last-child:active {
+            box-shadow: 0 8px 14px rgba(107, 114, 128, 0.2);
+        }
+
+        /* Help Modal */
+
+        .help-content {
+            line-height: 1.6;
+        }
+
+        .help-content h3 {
+            margin-bottom: 10px;
+        }
+
+        .help-content p {
+            margin-bottom: 15px;
+        }
+
+        .help-content ul {
+            list-style-position: inside;
+            margin-bottom: 15px;
+        }
+
+        .help-content li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body class="green-phase">
+    <div class="container">
+        <div class="controls">
+            <button class="btn" id="startBtn">Start</button>
+            <button class="btn" id="settingsBtn">Settings (Ctrl+,)</button>
+        </div>
+        <div class="timer-display" id="timerDisplay">05:00</div>
+        
+        <!-- Always visible keyboard shortcuts -->
+        <div class="shortcuts-info">
+            <h4>Keyboard Shortcuts</h4>
+            <ul>
+                <li><strong>S</strong><span>Start / Stop</span></li>
+                <li><strong>P</strong><span>Pause / Resume</span></li>
+                <li><strong>F</strong><span>Fullscreen</span></li>
+                <li><strong>H</strong><span>Help Dialog</span></li>
+                <li><strong>Ctrl+,</strong><span>Settings</span></li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">Settings</div>
+            <div class="form-group">
+                <label for="majorTime">Green time (minutes):</label>
+                <input type="number" id="majorTime" min="1" value="5">
+            </div>
+            <div class="form-group">
+                <label for="minorTime">Red time (minutes):</label>
+                <input type="number" id="minorTime" min="1" value="2">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn" id="saveBtn">Save</button>
+                <button class="btn" id="cancelBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal" id="helpModal">
+        <div class="modal-content help-content">
+            <div class="modal-header">How to Use Talker Counter</div>
+            <h3>About</h3>
+            <p>Talker Counter is an app for time management during talks/presentations and discussions. It has two modes:</p>
+            <ul>
+                <li><strong>Green Phase:</strong> Countdown timer (for the talk)</li>
+                <li><strong>Red Phase:</strong> Count-up timer (for discussion). Starts automatically when countdown finishes.</li>
+            </ul>
+            <h3>Features</h3>
+            <ul>
+                <li>Configurable time limits for both phases</li>
+                <li>Large, easy-to-read timer display</li>
+                <li>Visual feedback with color changes</li>
+                <li>Pause and resume timer control</li>
+                <li>Fullscreen mode for presentations</li>
+                <li>Keyboard shortcuts for quick control</li>
+            </ul>
+            <div class="modal-buttons">
+                <button class="btn" id="closeHelpBtn">Close (H or Esc)</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State variables
+        let isRunning = false;
+        let isPaused = false;
+        let isFirstPhase = true;
+        let isFullScreen = false;
+        let majorTime = 5; // minutes
+        let minorTime = 2; // minutes
+        let goalTime = null;
+        let pausedTime = null;
+        let timerInterval = null;
+
+        // DOM elements
+        const timerDisplay = document.getElementById('timerDisplay');
+        const startBtn = document.getElementById('startBtn');
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsModal = document.getElementById('settingsModal');
+        const helpModal = document.getElementById('helpModal');
+        const majorTimeInput = document.getElementById('majorTime');
+        const minorTimeInput = document.getElementById('minorTime');
+        const saveBtn = document.getElementById('saveBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const closeHelpBtn = document.getElementById('closeHelpBtn');
+
+        // Load settings from localStorage
+        function loadSettings() {
+            const savedMajorTime = localStorage.getItem('majorTime');
+            const savedMinorTime = localStorage.getItem('minorTime');
+            if (savedMajorTime) majorTime = parseInt(savedMajorTime);
+            if (savedMinorTime) minorTime = parseInt(savedMinorTime);
+            resetTimer();
+        }
+
+        // Save settings to localStorage
+        function saveSettings() {
+            localStorage.setItem('majorTime', majorTime);
+            localStorage.setItem('minorTime', minorTime);
+        }
+
+        // Format time display
+        function formatTime(totalSeconds) {
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        // Reset timer
+        function resetTimer() {
+            isRunning = false;
+            isPaused = false;
+            isFirstPhase = true;
+            pausedTime = null;
+            document.body.className = 'green-phase';
+            timerDisplay.classList.remove('paused');
+            timerDisplay.textContent = formatTime(majorTime * 60);
+            startBtn.textContent = 'Start';
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        // Start timer
+        function startTimer() {
+            isRunning = true;
+            isFirstPhase = true;
+            goalTime = Date.now() + (majorTime * 60 * 1000);
+            startBtn.textContent = 'Stop';
+            
+            timerInterval = setInterval(updateTimer, 100);
+        }
+
+        // Stop timer
+        function stopTimer() {
+            resetTimer();
+        }
+
+        // Pause timer
+        function pauseTimer() {
+            if (!isRunning || isPaused) return;
+            
+            isPaused = true;
+            pausedTime = Date.now();
+            timerDisplay.classList.add('paused');
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        // Resume timer
+        function resumeTimer() {
+            if (!isRunning || !isPaused) return;
+            
+            const pauseDuration = Date.now() - pausedTime;
+            goalTime += pauseDuration;
+            isPaused = false;
+            pausedTime = null;
+            timerDisplay.classList.remove('paused');
+            timerInterval = setInterval(updateTimer, 100);
+        }
+
+        // Toggle pause/resume
+        function togglePause() {
+            if (!isRunning) return;
+            
+            if (isPaused) {
+                resumeTimer();
+            } else {
+                pauseTimer();
+            }
+        }
+
+        // Update timer
+        function updateTimer() {
+            if (isPaused) return;
+            
+            const now = Date.now();
+            
+            if (isFirstPhase) {
+                // Countdown phase (green)
+                const remaining = Math.floor((goalTime - now) / 1000);
+                
+                if (remaining <= 0) {
+                    // Switch to count-up phase (red)
+                    isFirstPhase = false;
+                    goalTime = now;
+                    document.body.className = 'red-phase';
+                } else {
+                    timerDisplay.textContent = formatTime(remaining);
+                }
+            } else {
+                // Count-up phase (red)
+                const elapsed = Math.floor((now - goalTime) / 1000);
+                timerDisplay.textContent = formatTime(elapsed);
+                
+                // Auto-stop after red time expires
+                if (elapsed >= minorTime * 60) {
+                    stopTimer();
+                }
+            }
+        }
+
+        // Toggle fullscreen
+        function toggleFullScreen() {
+            if (!isFullScreen) {
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                } else if (document.documentElement.webkitRequestFullscreen) {
+                    document.documentElement.webkitRequestFullscreen();
+                } else if (document.documentElement.msRequestFullscreen) {
+                    document.documentElement.msRequestFullscreen();
+                }
+                document.body.classList.add('fullscreen');
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+                document.body.classList.remove('fullscreen');
+            }
+            isFullScreen = !isFullScreen;
+        }
+
+        // Show settings modal
+        function showSettings() {
+            if (isRunning) return; // Don't allow settings change while running
+            
+            majorTimeInput.value = majorTime;
+            minorTimeInput.value = minorTime;
+            settingsModal.classList.add('active');
+        }
+
+        // Hide settings modal
+        function hideSettings() {
+            settingsModal.classList.remove('active');
+        }
+
+        // Toggle help modal
+        function toggleHelp() {
+            helpModal.classList.toggle('active');
+        }
+
+        // Hide help modal
+        function hideHelp() {
+            helpModal.classList.remove('active');
+        }
+
+        // Event Listeners
+        startBtn.addEventListener('click', () => {
+            if (isRunning) {
+                stopTimer();
+            } else {
+                startTimer();
+            }
+        });
+
+        settingsBtn.addEventListener('click', showSettings);
+
+        saveBtn.addEventListener('click', () => {
+            majorTime = parseInt(majorTimeInput.value) || 5;
+            minorTime = parseInt(minorTimeInput.value) || 2;
+            saveSettings();
+            resetTimer();
+            hideSettings();
+        });
+
+        cancelBtn.addEventListener('click', hideSettings);
+
+        closeHelpBtn.addEventListener('click', hideHelp);
+
+        // Keyboard shortcuts
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 's' || e.key === 'S') {
+                if (isRunning) {
+                    stopTimer();
+                } else {
+                    startTimer();
+                }
+            } else if (e.key === 'p' || e.key === 'P') {
+                togglePause();
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullScreen();
+            } else if (e.key === 'h' || e.key === 'H') {
+                toggleHelp();
+            } else if (e.key === ',' && e.ctrlKey) {
+                e.preventDefault();
+                showSettings();
+            } else if (e.key === 'Escape') {
+                hideSettings();
+                hideHelp();
+            }
+        });
+
+        // Close modals when clicking outside
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) {
+                hideSettings();
+            }
+        });
+
+        helpModal.addEventListener('click', (e) => {
+            if (e.target === helpModal) {
+                hideHelp();
+            }
+        });
+
+        // Handle fullscreen change events
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                isFullScreen = false;
+                document.body.classList.remove('fullscreen');
+            }
+        });
+
+        // Initialize
+        loadSettings();
+    </script>
+</body>
+</html>
