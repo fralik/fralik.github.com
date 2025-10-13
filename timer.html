@@ -212,6 +212,13 @@
             border-radius: 4px;
         }
 
+        .form-group input:focus-visible {
+            outline: 3px solid #facc15;
+            outline-offset: 2px;
+            border-color: #facc15;
+            box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.25);
+        }
+
         .modal-buttons {
             display: flex;
             justify-content: space-between;
@@ -224,6 +231,12 @@
             background: linear-gradient(135deg, #4f46e5, #6366f1);
             color: #fff;
             border: none;
+        }
+
+        .modal-buttons .btn:focus-visible {
+            outline: 3px solid #facc15;
+            outline-offset: 2px;
+            box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.25);
         }
 
         .modal-buttons .btn:hover {
@@ -361,17 +374,38 @@
 
         // Load settings from localStorage
         function loadSettings() {
-            const savedMajorTime = localStorage.getItem('majorTime');
-            const savedMinorTime = localStorage.getItem('minorTime');
-            if (savedMajorTime) majorTime = parseInt(savedMajorTime);
-            if (savedMinorTime) minorTime = parseInt(savedMinorTime);
+            try {
+                const savedMajorTime = localStorage.getItem('majorTime');
+                const savedMinorTime = localStorage.getItem('minorTime');
+                
+                if (savedMajorTime) {
+                    const parsed = parseInt(savedMajorTime);
+                    if (!isNaN(parsed) && parsed > 0) {
+                        majorTime = parsed;
+                    }
+                }
+                
+                if (savedMinorTime) {
+                    const parsed = parseInt(savedMinorTime);
+                    if (!isNaN(parsed) && parsed > 0) {
+                        minorTime = parsed;
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading settings from localStorage:', e);
+                // Use default values (already set)
+            }
             resetTimer();
         }
 
         // Save settings to localStorage
         function saveSettings() {
-            localStorage.setItem('majorTime', majorTime);
-            localStorage.setItem('minorTime', minorTime);
+            try {
+                localStorage.setItem('majorTime', majorTime.toString());
+                localStorage.setItem('minorTime', minorTime.toString());
+            } catch (e) {
+                console.error('Error saving settings to localStorage:', e);
+            }
         }
 
         // Format time display
@@ -509,6 +543,12 @@
             majorTimeInput.value = majorTime;
             minorTimeInput.value = minorTime;
             settingsModal.classList.add('active');
+            
+            // Focus on the first input field
+            setTimeout(() => {
+                majorTimeInput.focus();
+                majorTimeInput.select();
+            }, 10);
         }
 
         // Hide settings modal
