@@ -77,7 +77,7 @@
     name: 0x3E,
     nameSize: 14,
     slotId: 0x4B,
-    buildingBits: [0, 1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+    buildingBits: [0, 1, 2, 3, 4, 5, 7, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
   };
 
   const RESOURCES = {
@@ -92,6 +92,11 @@
     heroRadius: 5
   };
 
+  const GMC_MAP_VISIBILITY = {
+    ...MAP_VISIBILITY,
+    offset: 0x612F
+  };
+
   const PLAYER_ROSTERS = {
     firstHeroCount: 0x0316,
     stride: 0xCF,
@@ -102,10 +107,52 @@
     emptyHero: 0xFF
   };
 
+  const GMC_PLAYER_ROSTERS = {
+    ...PLAYER_ROSTERS,
+    firstHeroCount: 0x0409,
+    preserveUnusedCurrent: true
+  };
+
+  const FORMAT_PROFILES = [
+    {
+      id: "gxc",
+      label: "Gold/expansion save (.GXC)",
+      extensions: ["gxc"],
+      hero: { firstOffset: HERO.firstOffset, max: HERO.max, stride: HERO.stride },
+      town: { firstOffset: TOWN.firstOffset, max: TOWN.max, stride: TOWN.stride },
+      resources: { offset: RESOURCES.offset, names: RESOURCES.names },
+      mapVisibility: MAP_VISIBILITY,
+      playerRosters: PLAYER_ROSTERS,
+      supports: {
+        heroOwnership: true,
+        mapVisibility: true,
+        townBuildings: true,
+        dwellingStock: true
+      }
+    },
+    {
+      id: "gmc",
+      label: "Standard campaign save (.GMC)",
+      extensions: ["gmc"],
+      hero: { firstOffset: 0x08ED, max: 54, stride: 0xEC },
+      town: { firstOffset: 0x3AFA, max: 72, stride: TOWN.stride, mageGuildPrefixBit: 0 },
+      resources: { offset: 0x0497, names: RESOURCES.names },
+      mapVisibility: GMC_MAP_VISIBILITY,
+      playerRosters: GMC_PLAYER_ROSTERS,
+      supports: {
+        heroOwnership: true,
+        mapVisibility: true,
+        townBuildings: true,
+        dwellingStock: true
+      }
+    }
+  ];
+
   const state = {
     buffer: null,
     view: null,
     fileName: "",
+    formatProfile: null,
     dirty: false,
     heroes: [],
     towns: [],
@@ -177,6 +224,7 @@
     state.buffer = buffer;
     state.view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     state.fileName = fileName;
+    state.formatProfile = detectFormat(buffer, fileName);
     state.heroes = findHeroes();
     state.towns = findTowns();
     readPlayerRosters();
@@ -186,6 +234,7 @@
     state.activeTab = "heroes";
     state.selectedType = "heroes";
     state.selectedIndex = state.heroes.length ? 0 : null;
+    if (!state.formatProfile.supports.heroOwnership) ui.ownerFilter.value = "";
     setEnabled(true);
     renderAll();
   }
@@ -195,6 +244,7 @@
     state.buffer = null;
     state.view = null;
     state.fileName = "";
+    state.formatProfile = null;
     state.dirty = false;
     state.heroes = [];
     state.towns = [];
@@ -209,6 +259,32 @@
     ui.recordCount.textContent = "0 records";
     showEmpty("No Save Loaded");
     updateFileStatus();
+  }
+
+  function detectFormat(buffer, fileName) {
+    const scored = FORMAT_PROFILES.map(profile => ({ profile, score: scoreFormat(profile, buffer, fileName) }))
+      .sort((left, right) => right.score - left.score);
+    const best = scored[0];
+    if (!best || best.score <= 0) throw new Error("Unsupported save format or unrecognized hero table.");
+    return best.profile;
+  }
+
+  function scoreFormat(profile, buffer, fileName) {
+    let score = 0;
+    const extension = (fileName.match(/\.([^.]+)$/) || [])[1];
+    if (extension && profile.extensions.includes(extension.toLowerCase())) score += 20;
+
+    const heroLayout = profile.hero;
+    let heroesFound = 0;
+    for (let index = 0; index < Math.min(heroLayout.max, 12); index += 1) {
+      const offset = heroLayout.firstOffset + index * heroLayout.stride;
+      if (offset + heroLayout.stride <= buffer.length && looksLikeHeroBuffer(buffer, offset)) heroesFound += 1;
+    }
+    score += heroesFound * 3;
+
+    const townLayout = profile.town;
+    if (townLayout && townLayout.firstOffset + townLayout.stride <= buffer.length && looksLikeTownBuffer(buffer, townLayout.firstOffset)) score += 3;
+    return score;
   }
 
   function setEnabled(enabled) {
@@ -234,14 +310,15 @@
     ui.heroesTab.setAttribute("aria-selected", String(heroesActive));
     ui.townsTab.setAttribute("aria-selected", String(!heroesActive));
     ui.classFilter.disabled = !state.buffer || !heroesActive;
-    ui.ownerFilter.disabled = !state.buffer || !heroesActive;
+    ui.ownerFilter.disabled = !state.buffer || !heroesActive || !state.formatProfile || !state.formatProfile.supports.heroOwnership;
   }
 
   function renderResources() {
     if (!state.buffer) return;
+    const resources = state.formatProfile.resources;
     ui.resourcesGrid.className = "resource-grid";
     ui.resourcesGrid.innerHTML = "";
-    for (const name of RESOURCES.names) {
+    for (const name of resources.names) {
       const label = document.createElement("label");
       label.className = "resource-field";
       label.append(span(name));
@@ -355,23 +432,33 @@
     ui.editor.className = "editor";
     ui.editor.innerHTML = "";
     const layout = div("editor-layout");
+    const supports = state.formatProfile.supports;
     const header = div("editor-header");
     const titleBlock = document.createElement("div");
     titleBlock.append(heading(hero.name || "(unnamed)", 2), paragraph(`${heroClass(hero.implicitClass)} | ${heroOwner(hero)} | ${hex(hero.fileOffset, 4)}`));
     header.append(titleBlock);
     layout.append(header);
 
-    layout.append(section("Identity", div("section-grid",
+    const identityFields = [
       textField("Name", hero.name, 13, value => updateHero(hero, "name", asciiText(value, 13))),
-      selectField("Owner", heroOwnerSelectValue(hero), heroOwnerOptions(), value => setHeroOwner(hero, value)),
-      checkField("Reveal area when owner changes", state.revealOnOwnerChange, checked => {
-        state.revealOnOwnerChange = checked;
-      }),
-      actionField("Visibility", "Reveal for owner", () => revealHeroAreaForCurrentOwner(hero)),
+      supports.heroOwnership
+        ? selectField("Owner", heroOwnerSelectValue(hero), heroOwnerOptions(), value => setHeroOwner(hero, value))
+        : readonlyField("Owner", heroOwner(hero)),
       numericField("Portrait ID", hero.portraitId, 0, 255, value => updateHero(hero, "portraitId", value)),
       selectField("Class", String(hero.implicitClass), HERO_CLASSES.map((label, index) => ({ value: String(index), label })), value => updateHero(hero, "heroClass", Number(value))),
       numericField("Experience", hero.experience, 0, 0xFFFFFFFF, value => updateHero(hero, "experience", value))
-    )));
+    ];
+
+    if (supports.mapVisibility) {
+      identityFields.splice(2, 0,
+        checkField("Reveal area when owner changes", state.revealOnOwnerChange, checked => {
+          state.revealOnOwnerChange = checked;
+        }),
+        actionField("Visibility", "Reveal for owner", () => revealHeroAreaForCurrentOwner(hero))
+      );
+    }
+
+    layout.append(section("Identity", div("section-grid", ...identityFields)));
 
     layout.append(section("Primary Skills", div("section-grid wide-grid",
       numericField("Attack", hero.attack, 0, 99, value => updateHero(hero, "attack", value)),
@@ -425,10 +512,11 @@
       readonlyField("Position", `${hero.positionX}, ${hero.positionY}`),
       readonlyField("Town Slot", hero.townName || "(none)"),
       readonlyField("Town Owner", hero.townOwnerPlayerId == null ? "(none)" : playerColor(hero.townOwnerPlayerId)),
+      readonlyField("Format", state.formatProfile.label),
       readonlyField("Record Index", String(hero.index))
     )));
 
-    layout.append(hexSection("Raw Bytes", state.buffer.slice(hero.fileOffset, hero.fileOffset + HERO.stride)));
+    layout.append(hexSection("Raw Bytes", state.buffer.slice(hero.fileOffset, hero.fileOffset + state.formatProfile.hero.stride)));
     ui.editor.append(layout);
   }
 
@@ -450,6 +538,12 @@
       readonlyField("Index", String(town.index)),
       readonlyField("Offset", hex(town.fileOffset, 4))
     )));
+
+    if (!state.formatProfile.supports.townBuildings || !state.formatProfile.supports.dwellingStock) {
+      layout.append(hexSection("Raw Bytes", state.buffer.slice(town.fileOffset, town.fileOffset + state.formatProfile.town.stride)));
+      ui.editor.append(layout);
+      return;
+    }
 
     const buildingGrid = div("building-grid");
     buildingGrid.append(checkField("Faction info building", town.hasThievesGuild, checked => {
@@ -495,32 +589,37 @@
     }
     layout.append(section("Dwelling Stock", stockGrid));
 
-    layout.append(hexSection("Raw Bytes", state.buffer.slice(town.fileOffset, town.fileOffset + TOWN.stride)));
+    layout.append(hexSection("Raw Bytes", state.buffer.slice(town.fileOffset, town.fileOffset + state.formatProfile.town.stride)));
     ui.editor.append(layout);
   }
 
   function findHeroes() {
     const heroes = [];
-    for (let index = 0; index < HERO.max; index += 1) {
-      const offset = HERO.firstOffset + index * HERO.stride;
-      if (offset + HERO.stride > state.buffer.length) break;
+    const heroLayout = state.formatProfile.hero;
+    for (let index = 0; index < heroLayout.max; index += 1) {
+      const offset = heroLayout.firstOffset + index * heroLayout.stride;
+      if (offset + heroLayout.stride > state.buffer.length) break;
       if (looksLikeHero(offset)) heroes.push(readHero(offset, index));
     }
     return heroes;
   }
 
   function looksLikeHero(offset) {
+    return looksLikeHeroBuffer(state.buffer, offset);
+  }
+
+  function looksLikeHeroBuffer(buffer, offset) {
     let nameLength = 0;
     for (; nameLength < HERO.nameSize; nameLength += 1) {
-      const byte = state.buffer[offset + nameLength];
+      const byte = buffer[offset + nameLength];
       if (byte === 0) break;
       if (byte < 0x20 || byte > 0x7E) return false;
     }
     if (nameLength === 0 || nameLength >= HERO.nameSize) return false;
-    if (state.buffer[offset + HERO.portrait] > 127) return false;
-    const sentinel = readU16(offset + HERO.sentinel);
+    if (buffer[offset + HERO.portrait] > 127) return false;
+    const sentinel = readU16Buffer(buffer, offset + HERO.sentinel);
     if (sentinel !== 0xFEFF && sentinel !== 0xFFFF) return false;
-    return state.buffer[offset + HERO.heroClass] <= 15;
+    return buffer[offset + HERO.heroClass] <= 15;
   }
 
   function readHero(offset, index) {
@@ -602,9 +701,11 @@
 
   function findTowns() {
     const towns = [];
-    for (let index = 0; index < TOWN.max; index += 1) {
-      const offset = TOWN.firstOffset + index * TOWN.stride;
-      if (offset + TOWN.stride > state.buffer.length) break;
+    const townLayout = state.formatProfile.town;
+    if (!townLayout) return towns;
+    for (let index = 0; index < townLayout.max; index += 1) {
+      const offset = townLayout.firstOffset + index * townLayout.stride;
+      if (offset + townLayout.stride > state.buffer.length) break;
       if (looksLikeTown(offset)) towns.push(readTown(offset, index));
       else if (towns.length > 0) break;
     }
@@ -612,10 +713,14 @@
   }
 
   function looksLikeTown(offset) {
+    return looksLikeTownBuffer(state.buffer, offset);
+  }
+
+  function looksLikeTownBuffer(buffer, offset) {
     const nameStart = offset + TOWN.name;
     let nameLength = 0;
     for (; nameLength < TOWN.nameSize; nameLength += 1) {
-      const byte = state.buffer[nameStart + nameLength];
+      const byte = buffer[nameStart + nameLength];
       if (byte === 0) break;
       if (byte < 0x20 || byte > 0x7E) return false;
     }
@@ -653,6 +758,10 @@
 
   function writeTown(town) {
     const offset = town.fileOffset;
+    const mageGuildPrefixBit = state.formatProfile.town && state.formatProfile.town.mageGuildPrefixBit;
+    if (mageGuildPrefixBit != null) {
+      town.buildFlagsPrefix = setBit(town.buildFlagsPrefix, mageGuildPrefixBit, town.mageGuildLevel > 0);
+    }
     if (offset > 0) state.buffer[offset - 1] = town.buildFlagsPrefix;
     writeU32(offset + TOWN.buildFlags, town.buildFlags);
     for (let slot = 0; slot < 6; slot += 1) writeU16(offset + TOWN.dwellingStock + slot * 2, town.dwellingStock[slot] || 0);
@@ -665,18 +774,21 @@
   function readPlayerRosters() {
     state.playerHeroRosters = [];
     state.playerRosterBlocks = [];
+    const playerRosters = state.formatProfile.playerRosters;
+    if (!playerRosters) return;
+    const heroLayout = state.formatProfile.hero;
     for (let playerId = 0; playerId < PLAYER_COLORS.length; playerId += 1) {
-      const offset = PLAYER_ROSTERS.firstHeroCount + playerId * PLAYER_ROSTERS.stride;
-      const rosterStart = offset + PLAYER_ROSTERS.heroRoster;
-      if (state.buffer.length <= rosterStart + PLAYER_ROSTERS.heroRosterSlots) break;
+      const offset = playerRosters.firstHeroCount + playerId * playerRosters.stride;
+      const rosterStart = offset + playerRosters.heroRoster;
+      if (state.buffer.length <= rosterStart + playerRosters.heroRosterSlots) break;
 
-      const currentHero = state.buffer[offset + PLAYER_ROSTERS.currentHero];
-      const heroCount = clamp(state.buffer[offset + PLAYER_ROSTERS.heroCount], 0, PLAYER_ROSTERS.heroRosterSlots);
+      const currentHero = state.buffer[offset + playerRosters.currentHero];
+      const heroCount = clamp(state.buffer[offset + playerRosters.heroCount], 0, playerRosters.heroRosterSlots);
       const seen = new Set();
       const heroIndexes = [];
       for (let slot = 0; slot < heroCount; slot += 1) {
         const heroIndex = state.buffer[rosterStart + slot];
-        if (heroIndex >= HERO.max || seen.has(heroIndex)) continue;
+        if (heroIndex >= heroLayout.max || seen.has(heroIndex)) continue;
         seen.add(heroIndex);
         heroIndexes.push(heroIndex);
         state.playerHeroRosters.push({
@@ -686,30 +798,41 @@
           isSelected: currentHero === heroIndex
         });
       }
-      state.playerRosterBlocks.push({ playerId, offset, currentHero, heroIndexes });
+      state.playerRosterBlocks.push({ playerId, offset, currentHero, heroIndexes, hadHeroes: heroIndexes.length > 0 });
     }
   }
 
   function writePlayerRosters() {
+    const playerRosters = state.formatProfile.playerRosters;
+    if (!playerRosters) return;
+    const heroLayout = state.formatProfile.hero;
     for (const block of state.playerRosterBlocks) {
-      const rosterStart = block.offset + PLAYER_ROSTERS.heroRoster;
-      const heroIndexes = block.heroIndexes.slice(0, PLAYER_ROSTERS.heroRosterSlots);
+      const rosterStart = block.offset + playerRosters.heroRoster;
+      const heroIndexes = block.heroIndexes.slice(0, playerRosters.heroRosterSlots);
       let selectedHero = block.currentHero;
-      if (selectedHero < HERO.max && !heroIndexes.includes(selectedHero)) {
-        selectedHero = heroIndexes.length ? heroIndexes[0] : PLAYER_ROSTERS.emptyHero;
+      if (selectedHero < heroLayout.max && !heroIndexes.includes(selectedHero)) {
+        selectedHero = heroIndexes.length || !playerRosters.preserveUnusedCurrent || block.hadHeroes
+          ? (heroIndexes[0] == null ? playerRosters.emptyHero : heroIndexes[0])
+          : block.currentHero;
       }
 
-      state.buffer[block.offset + PLAYER_ROSTERS.heroCount] = heroIndexes.length;
-      state.buffer[block.offset + PLAYER_ROSTERS.currentHero] = selectedHero;
-      for (let slot = 0; slot < PLAYER_ROSTERS.heroRosterSlots; slot += 1) {
-        state.buffer[rosterStart + slot] = heroIndexes[slot] == null ? PLAYER_ROSTERS.emptyHero : heroIndexes[slot];
+      state.buffer[block.offset + playerRosters.heroCount] = heroIndexes.length;
+      state.buffer[block.offset + playerRosters.currentHero] = selectedHero;
+      for (let slot = 0; slot < playerRosters.heroRosterSlots; slot += 1) {
+        state.buffer[rosterStart + slot] = heroIndexes[slot] == null ? playerRosters.emptyHero : heroIndexes[slot];
       }
       block.currentHero = selectedHero;
       block.heroIndexes = heroIndexes;
+      block.hadHeroes = heroIndexes.length > 0;
     }
   }
 
   function setHeroOwner(hero, value) {
+    if (!state.formatProfile.supports.heroOwnership) {
+      window.alert("Hero ownership editing is not mapped for this save format yet.");
+      renderHeroEditor(hero);
+      return;
+    }
     const targetPlayerId = value === "" ? null : Number(value);
     const currentOwner = hero.ownerPlayerId == null ? null : hero.ownerPlayerId;
     if (targetPlayerId === currentOwner) return;
@@ -722,8 +845,9 @@
     }
 
     const targetBlock = targetPlayerId == null ? null : playerRosterBlock(targetPlayerId);
-    if (targetBlock && !targetBlock.heroIndexes.includes(hero.index) && targetBlock.heroIndexes.length >= PLAYER_ROSTERS.heroRosterSlots) {
-      window.alert(`${playerColor(targetPlayerId)} already has ${PLAYER_ROSTERS.heroRosterSlots} heroes.`);
+    const playerRosters = state.formatProfile.playerRosters;
+    if (targetBlock && !targetBlock.heroIndexes.includes(hero.index) && targetBlock.heroIndexes.length >= playerRosters.heroRosterSlots) {
+      window.alert(`${playerColor(targetPlayerId)} already has ${playerRosters.heroRosterSlots} heroes.`);
       renderHeroEditor(hero);
       return;
     }
@@ -760,32 +884,39 @@
   }
 
   function revealHeroArea(hero, playerId, showAlerts) {
+    const mapVisibility = state.formatProfile.mapVisibility;
+    if (!mapVisibility) {
+      if (showAlerts) window.alert("Map visibility editing is not mapped for this save format yet.");
+      return false;
+    }
     if (!hasValidMapPosition(hero)) {
       if (showAlerts) window.alert(`${hero.name} does not have a map position to reveal.`);
       return false;
     }
-    const end = MAP_VISIBILITY.offset + MAP_VISIBILITY.width * MAP_VISIBILITY.height;
+    const end = mapVisibility.offset + mapVisibility.width * mapVisibility.height;
     if (state.buffer.length < end) {
       if (showAlerts) window.alert("This save is too small for the known visibility grid.");
       return false;
     }
 
     const mask = 1 << playerId;
-    const radius = MAP_VISIBILITY.heroRadius;
-    for (let y = Math.max(0, hero.positionY - radius); y <= Math.min(MAP_VISIBILITY.height - 1, hero.positionY + radius); y += 1) {
-      for (let x = Math.max(0, hero.positionX - radius); x <= Math.min(MAP_VISIBILITY.width - 1, hero.positionX + radius); x += 1) {
+    const radius = mapVisibility.heroRadius;
+    for (let y = Math.max(0, hero.positionY - radius); y <= Math.min(mapVisibility.height - 1, hero.positionY + radius); y += 1) {
+      for (let x = Math.max(0, hero.positionX - radius); x <= Math.min(mapVisibility.width - 1, hero.positionX + radius); x += 1) {
         const dx = x - hero.positionX;
         const dy = y - hero.positionY;
         if (dx * dx + dy * dy > radius * radius) continue;
-        state.buffer[MAP_VISIBILITY.offset + y * MAP_VISIBILITY.width + x] |= mask;
+        state.buffer[mapVisibility.offset + y * mapVisibility.width + x] |= mask;
       }
     }
     return true;
   }
 
   function hasValidMapPosition(hero) {
-    return hero.positionX >= 0 && hero.positionX < MAP_VISIBILITY.width
-      && hero.positionY >= 0 && hero.positionY < MAP_VISIBILITY.height
+    const mapVisibility = state.formatProfile.mapVisibility;
+    if (!mapVisibility) return false;
+    return hero.positionX >= 0 && hero.positionX < mapVisibility.width
+      && hero.positionY >= 0 && hero.positionY < mapVisibility.height
       && (hero.positionX !== 0 || hero.positionY !== 0 || hero.isOnMap);
   }
 
@@ -794,9 +925,10 @@
   }
 
   function applyHeroOwnership() {
+    const heroLayout = state.formatProfile.hero;
     const rosterByHero = new Map(state.playerHeroRosters.map(entry => [entry.index, entry]));
     const townByHero = new Map(state.towns
-      .filter(town => town.visitingHeroIndex < HERO.max)
+      .filter(town => town.visitingHeroIndex < heroLayout.max)
       .map(town => [town.visitingHeroIndex, town]));
 
     for (const hero of state.heroes) {
@@ -822,19 +954,21 @@
   }
 
   function readResources() {
-    if (state.buffer.length < RESOURCES.offset + RESOURCES.names.length * 4) {
+    const resourcesProfile = state.formatProfile.resources;
+    if (state.buffer.length < resourcesProfile.offset + resourcesProfile.names.length * 4) {
       throw new Error("Buffer too small for resources record.");
     }
     const resources = {};
-    for (let index = 0; index < RESOURCES.names.length; index += 1) {
-      resources[RESOURCES.names[index]] = readU32(RESOURCES.offset + index * 4);
+    for (let index = 0; index < resourcesProfile.names.length; index += 1) {
+      resources[resourcesProfile.names[index]] = readU32(resourcesProfile.offset + index * 4);
     }
     return resources;
   }
 
   function writeResources() {
-    for (let index = 0; index < RESOURCES.names.length; index += 1) {
-      writeU32(RESOURCES.offset + index * 4, state.resources[RESOURCES.names[index]] || 0);
+    const resourcesProfile = state.formatProfile.resources;
+    for (let index = 0; index < resourcesProfile.names.length; index += 1) {
+      writeU32(resourcesProfile.offset + index * 4, state.resources[resourcesProfile.names[index]] || 0);
     }
   }
 
@@ -865,12 +999,12 @@
   function updateFileStatus() {
     if (!state.buffer) {
       ui.fileStatus.textContent = "No save loaded";
-      document.title = "HoMM2 GXC Save Editor";
+      document.title = "HoMM2 Save Editor";
       return;
     }
     const dirty = state.dirty ? " | modified" : "";
-    ui.fileStatus.textContent = `${state.fileName} | ${formatNumber(state.buffer.length)} bytes | ${state.heroes.length} heroes | ${state.towns.length} towns${dirty}`;
-    document.title = `${state.dirty ? "* " : ""}${state.fileName} - HoMM2 GXC Save Editor`;
+    ui.fileStatus.textContent = `${state.fileName} | ${state.formatProfile.label} | ${formatNumber(state.buffer.length)} bytes | ${state.heroes.length} heroes | ${state.towns.length} towns${dirty}`;
+    document.title = `${state.dirty ? "* " : ""}${state.fileName} - HoMM2 Save Editor`;
   }
 
   function showEmpty(message, isError) {
@@ -888,6 +1022,7 @@
   function readI32(offset) { return state.view.getInt32(offset, true); }
   function writeU16(offset, value) { state.view.setUint16(offset, clamp(value, 0, 0xFFFF), true); }
   function writeU32(offset, value) { state.view.setUint32(offset, clamp(value, 0, 0xFFFFFFFF), true); }
+  function readU16Buffer(buffer, offset) { return buffer[offset] | (buffer[offset + 1] << 8); }
 
   function readAscii(offset, length) {
     let text = "";
@@ -957,7 +1092,7 @@
 
   function townBuildingName(bit, factionId) {
     return factionTownBuildingName(bit, factionId) || ({
-      0: "Left Turret", 1: "Right Turret", 2: "Marketplace", 3: "Race growth building", 4: "Moat", 5: "Race special building",
+      0: "Left Turret", 1: "Right Turret", 2: "Marketplace", 3: "Race growth building", 4: "Moat", 5: "Race special building", 7: "Captain's Quarters",
       11: "Dwelling 1", 12: "Dwelling 2", 13: "Dwelling 3", 14: "Dwelling 4", 15: "Dwelling 5", 16: "Dwelling 6",
       17: "Upgraded Dwelling 2", 18: "Upgraded Dwelling 3", 19: "Upgraded Dwelling 4", 20: "Upgraded Dwelling 5", 21: "Upgraded Dwelling 6"
     }[bit] || `Unknown (bit ${bit})`);
