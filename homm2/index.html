@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Heroes of Might and Magic 2 GXC File Editor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <h1>Heroes of Might and Magic 2 GXC File Editor</h1>
+      <span id="fileStatus">No GXC file loaded</span>
+    </div>
+    <div class="actions">
+      <label class="file-button">
+        <input id="fileInput" type="file" accept=".gxc,.GXC,application/octet-stream">
+        Open GXC file
+      </label>
+      <button id="downloadButton" type="button" disabled>Download Edited GXC File</button>
+      <button id="closeButton" type="button" disabled>Close</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="sidebar">
+      <section class="panel resources-panel" aria-labelledby="resourcesTitle">
+        <div class="panel-title">
+          <h2 id="resourcesTitle">Resources</h2>
+        </div>
+        <div id="resourcesGrid" class="resource-grid muted">Open a save to edit resources.</div>
+      </section>
+
+      <section class="panel filters-panel" aria-labelledby="filtersTitle">
+        <div class="panel-title">
+          <h2 id="filtersTitle">Filters</h2>
+        </div>
+        <label>
+          <span>Name</span>
+          <input id="nameFilter" type="search" placeholder="Filter heroes and towns" disabled>
+        </label>
+        <label>
+          <span>Class</span>
+          <select id="classFilter" disabled></select>
+        </label>
+        <label>
+          <span>Owner</span>
+          <select id="ownerFilter" disabled></select>
+        </label>
+      </section>
+
+      <section class="panel records-panel" aria-label="Records">
+        <div class="tabs" role="tablist" aria-label="Record type">
+          <button id="heroesTab" class="tab active" type="button" role="tab" aria-selected="true">Heroes</button>
+          <button id="townsTab" class="tab" type="button" role="tab" aria-selected="false">Towns</button>
+        </div>
+        <div id="recordCount" class="record-count">0 records</div>
+        <div id="recordList" class="record-list" role="listbox" aria-label="Save records"></div>
+      </section>
+    </aside>
+
+    <section id="editor" class="editor empty-state">
+      <div>
+        <h2>No Save Loaded</h2>
+      </div>
+    </section>
+  </main>
+
+  <template id="fieldTemplate">
+    <label class="field">
+      <span></span>
+      <input>
+    </label>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
