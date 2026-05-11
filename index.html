@@ -1,57 +1,853 @@
 <!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <title>Open source projects by Vadim Frolov</title>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tools</title>
+  <meta name="description" content="A small collection of independent browser-only tools.">
+  <script>
+    // Apply persisted theme before first paint to avoid a flash.
+    (function () {
+      try {
+        var saved = localStorage.getItem("theme");
+        if (saved === "light" || saved === "dark") {
+          document.documentElement.setAttribute("data-theme", saved);
+        }
+      } catch (e) { /* storage blocked, fall back to OS */ }
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0e1014;
+      --bg-elev: #14181f;
+      --bg-soft: #1a1f29;
+      --border: #232a36;
+      --border-strong: #2f3847;
+      --text: #f1f5fb;
+      --muted: #b6bdcb;
+      --dim: #7a8290;
+      --accent: #7ee2c4;
+      --accent-soft: rgba(126, 226, 196, 0.14);
+      --accent-strong: #34d4a8;
+      --warn: #f5c272;
+      --pink: #f6a5c0;
+      --blue: #8cb4ff;
+      --shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+      --mono: ui-monospace, "JetBrains Mono", "Fira Code", SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
 
-    <link rel="stylesheet" href="stylesheets/styles.css">
-    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <!--[if lt IE 9]>
-    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-    <![endif]-->
-  </head>
-  <body>
-    <div class="wrapper">
-      <header>
-        <h1>Open source projects</h1>
-        <p></p>
-        <p class="view"><a href="https://github.com/fralik">View my GitHub profile</a></p>
-        <p class="view"><a href="https://bitbucket.org/fralik">View my Bitbucket profile</a></p>
-        <p class="view"><a href="https://bitbucket.org/cnc-ntnu">View open soured projects from Kavli Institute, Trondheim</a></p>
-      </header>
-      <section>
-        <h3>Involvement in open source projects</h3>
-        <ul>
-            <li>Several bug reports for KDE Marble project: <a href="https://bugs.kde.org/show_bug.cgi?id=383883">broken development bundle installation under Windows and macOS</a>; <a href="https://bugs.kde.org/show_bug.cgi?id=383790">disconnect uses deleted object in AnnotatePlugin</a>; <a href="https://bugs.kde.org/show_bug.cgi?id=383791">usage of incorrect signals when compiled without Webkit</a>.</li>
-            <li>Suppport for Hawell HW-9004V1 video capture card in Linux kernel. Appears in <a href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=9690fd80d3fb1bbfe04d7e1d8dde0cfd353c7b8d">kernel 3.9</a>.</li>
-            <li>Qt. Provided Qt library compiled for <a href="https://qt.gitorious.org/qt-creator/qt-creator/commit/7bae23b3a63e37d08ab3ab21b23b44e85560cb0c">MIPS architecture</a>. How-to article about using <a href="http://qt-project.org/wiki/Show_tooltips_for_long_entries_of_your_custom_model">tooltips with custom data models</a>.</li>
-            <li>
-            <a href="https://wiki.merproject.org/wiki/Nemo">Nemo mobile</a>. Fixed several bugs. Fixes are already included in the release.</li>
-            <li>
-            <a href="https://code.google.com/p/zonerama/">Zonerama</a>. Created a <a href="https://code.google.com/p/zonerama/source/detail?r=38">patch</a> that allows to use the software after the installation.</li>
-            <li>
-            <a href="http://wiki.yourse.de/doku.php?id=python:kfzcheck">KFZcheck</a>. Created list-file that contains description of Russian <a href="http://maemo.org/packages/view/kfzcheck/">licence plates</a>.</li>
-            <li>
-            <a href="http://damien.douxchamps.net/ieee1394/libdc1394/">libdc1394</a>. A patch that allows to use FLIR A40 thermal <a href="https://github.com/fralik/libdc1394-flir">infrared camera in Linux</a>. The cameras that do not follow the IIDC specification are not officially supported by <em>libdc1394</em>. Because of this the patch is rejected by maintainers.</li>
-        </ul>
-      </section>
-      <footer>
-        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
-      </footer>
-    </div>
-    <script src="javascripts/scale.fix.js"></script>
-              <script type="text/javascript">
-            var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
-            document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
-          </script>
-          <script type="text/javascript">
-            try {
-              var pageTracker = _gat._getTracker("UA-34094583-1");
-            pageTracker._trackPageview();
-            } catch(err) {}
-          </script>
+    /* Light palette: shared by data-theme="light" override AND OS preference
+       (when the user hasn't explicitly chosen a theme via the toggle). */
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #f7f8fb;
+      --bg-elev: #ffffff;
+      --bg-soft: #eef1f6;
+      --border: #e1e6ee;
+      --border-strong: #c8d0dc;
+      --text: #161a22;
+      --muted: #5c6473;
+      --dim: #8a93a3;
+      --accent: #0c8e6c;
+      --accent-soft: rgba(12, 142, 108, 0.12);
+      --accent-strong: #086a51;
+      --warn: #b07a14;
+      --pink: #c43c75;
+      --blue: #2f5fd9;
+      --shadow: 0 18px 40px rgba(20, 30, 50, 0.08);
+    }
 
-  </body>
+    [data-theme="dark"] {
+      color-scheme: dark;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        color-scheme: light;
+        --bg: #f7f8fb;
+        --bg-elev: #ffffff;
+        --bg-soft: #eef1f6;
+        --border: #e1e6ee;
+        --border-strong: #c8d0dc;
+        --text: #161a22;
+        --muted: #5c6473;
+        --dim: #8a93a3;
+        --accent: #0c8e6c;
+        --accent-soft: rgba(12, 142, 108, 0.12);
+        --accent-strong: #086a51;
+        --warn: #b07a14;
+        --pink: #c43c75;
+        --blue: #2f5fd9;
+        --shadow: 0 18px 40px rgba(20, 30, 50, 0.08);
+      }
+    }
+
+    .theme-toggle {
+      appearance: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-elev);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .theme-toggle:hover {
+      color: var(--text);
+      border-color: var(--border-strong);
+    }
+
+    .theme-toggle:focus-visible {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+
+    .theme-toggle .icon {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.75;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Show the icon that represents the theme you'd switch *to*. */
+    .theme-toggle .icon-sun { display: none; }
+    [data-theme="dark"] .theme-toggle .icon-sun { display: inline; }
+    [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) .theme-toggle .icon-sun { display: inline; }
+      :root:not([data-theme="light"]) .theme-toggle .icon-moon { display: none; }
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      min-height: 100vh;
+      background-image:
+        radial-gradient(900px 600px at 90% -10%, var(--accent-soft), transparent 70%),
+        radial-gradient(700px 500px at -10% 110%, rgba(140, 180, 255, 0.10), transparent 70%);
+      background-attachment: fixed;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 56px 0 80px;
+    }
+
+    /* ---------- Header ---------- */
+    .masthead {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 24px;
+      padding-bottom: 28px;
+      border-bottom: 1px dashed var(--border-strong);
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      font-family: var(--mono);
+    }
+
+    .brand .prompt {
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 22px;
+    }
+
+    .brand .sub {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: clamp(44px, 9vw, 96px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 0.9;
+    }
+
+    h1 .caret {
+      display: inline-block;
+      width: 0.55ch;
+      margin-left: 0.15ch;
+      background: var(--accent);
+      color: transparent;
+      animation: blink 1.05s steps(1, end) infinite;
+      vertical-align: -0.04em;
+    }
+
+    @keyframes blink { 50% { background: transparent; } }
+
+    .tagline {
+      margin: 14px 0 0;
+      max-width: 560px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .tagline code {
+      font-family: var(--mono);
+      font-size: 13px;
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 1px 6px;
+      color: var(--text);
+    }
+
+    .meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .meta .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    /* ---------- Toolbar ---------- */
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      margin-top: 28px;
+    }
+
+    .search {
+      position: relative;
+      display: flex;
+      align-items: center;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 14px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .search:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+
+    .search .glyph {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 14px;
+      margin-right: 10px;
+    }
+
+    .search input {
+      flex: 1;
+      min-width: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-size: 15px;
+      outline: none;
+    }
+
+    .search input::placeholder { color: var(--dim); }
+
+    .search .kbd {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+      margin-left: 10px;
+      white-space: nowrap;
+    }
+
+    .search .kbd kbd {
+      background: var(--bg-soft);
+      border: 1px solid var(--border-strong);
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      padding: 2px 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+    }
+
+    .count {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .count strong { color: var(--text); font-weight: 600; }
+
+    /* ---------- Tag rail ---------- */
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .tag {
+      appearance: none;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg-elev);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .tag:hover { color: var(--text); border-color: var(--border-strong); }
+
+    .tag[aria-pressed="true"] {
+      color: var(--accent-strong);
+      background: var(--accent-soft);
+      border-color: var(--accent);
+    }
+
+    .tag .num { color: var(--dim); margin-left: 6px; }
+    .tag[aria-pressed="true"] .num { color: var(--accent-strong); }
+
+    /* ---------- Grid ---------- */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 28px;
+    }
+
+    .card {
+      position: relative;
+      display: grid;
+      grid-template-rows: auto auto auto 1fr auto;
+      gap: 14px;
+      padding: 22px 22px 18px;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      background: var(--card-accent, var(--accent));
+      opacity: 0.85;
+    }
+
+    .card:focus-within,
+    .card:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-2px);
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .card-head .slug::before {
+      content: "/";
+      color: var(--dim);
+      margin-right: 2px;
+    }
+
+    .card-head .badge {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 2px 8px;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-family: var(--sans);
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      line-height: 1.2;
+    }
+
+    .card p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .card-tags li {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
+
+    .card-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--border);
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .card-foot a.readme {
+      color: var(--muted);
+      border-bottom: 1px dashed var(--border-strong);
+    }
+
+    .card-foot a.readme:hover { color: var(--text); }
+
+    .card-foot .open {
+      color: var(--accent-strong);
+      font-weight: 600;
+    }
+
+    .card-foot .open::after {
+      content: " →";
+      transition: transform 0.15s ease;
+      display: inline-block;
+    }
+
+    .card:hover .card-foot .open::after { transform: translateX(3px); }
+
+    .card .stretched {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      border-radius: inherit;
+    }
+
+    .card .card-foot a.readme { position: relative; z-index: 2; }
+
+    /* ---------- Highlight ---------- */
+    mark {
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      padding: 0 2px;
+      border-radius: 3px;
+    }
+
+    /* ---------- Empty ---------- */
+    .empty {
+      grid-column: 1 / -1;
+      padding: 40px;
+      text-align: center;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 13px;
+      border: 1px dashed var(--border-strong);
+      border-radius: 14px;
+      background: var(--bg-elev);
+    }
+
+    .empty button {
+      margin-top: 10px;
+      background: transparent;
+      color: var(--accent-strong);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    /* ---------- Footer ---------- */
+    footer {
+      margin-top: 40px;
+      padding-top: 18px;
+      border-top: 1px dashed var(--border-strong);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    footer kbd {
+      background: var(--bg-soft);
+      border: 1px solid var(--border-strong);
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      padding: 2px 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      margin: 0 2px;
+    }
+
+    @media (max-width: 720px) {
+      .masthead { grid-template-columns: 1fr; }
+      .meta { align-items: flex-start; }
+      .toolbar { grid-template-columns: 1fr; }
+      .count { justify-self: start; }
+      .search .kbd { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      h1 .caret { animation: none; }
+      .card { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <div class="brand">
+          <span class="prompt">~/</span>
+          <span class="sub">a small collection of browser-only utilities</span>
+        </div>
+        <h1>tools<span class="caret">_</span></h1>
+        <p class="tagline">Independent static pages. No build step, no tracking, no install. Open one and it just runs. Press <code>/</code> to search, <code>Esc</code> to clear.</p>
+      </div>
+      <div class="meta">
+        <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme" title="Toggle theme">
+          <svg class="icon icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+          <svg class="icon icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <span id="themeLabel">theme</span>
+        </button>
+        <div><span class="dot" aria-hidden="true"></span><span id="visibleCountMeta">3 tools</span></div>
+        <div>last updated <span id="lastUpdated"></span></div>
+      </div>
+    </header>
+
+    <section class="toolbar" aria-label="Search and filter">
+      <label class="search">
+        <span class="glyph" aria-hidden="true">▍</span>
+        <input
+          id="search"
+          type="search"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Search tools, tags, descriptions…"
+          aria-label="Search tools"
+        >
+        <span class="kbd" aria-hidden="true"><kbd>/</kbd> to focus</span>
+      </label>
+      <div class="count" aria-live="polite">
+        showing <strong id="visibleCount">0</strong> of <strong id="totalCount">0</strong>
+      </div>
+    </section>
+
+    <nav class="tags" id="tagRail" aria-label="Filter by tag"></nav>
+
+    <section class="grid" id="grid" aria-label="Tools"></section>
+
+    <footer>
+      <div>
+        <kbd>/</kbd> search · <kbd>Esc</kbd> clear · <kbd>Enter</kbd> open first match
+      </div>
+      <div>static · runs locally in your browser</div>
+    </footer>
+  </main>
+
+  <template id="cardTemplate">
+    <article class="card" tabindex="0">
+      <a class="stretched" aria-label="Open tool"></a>
+      <div class="card-head">
+        <span class="slug"></span>
+        <span class="badge"></span>
+      </div>
+      <h2></h2>
+      <p></p>
+      <ul class="card-tags"></ul>
+      <div class="card-foot">
+        <a class="readme" target="_blank" rel="noopener">readme</a>
+        <span class="open">open</span>
+      </div>
+    </article>
+  </template>
+
+  <script>
+    const TOOLS = [
+      {
+        slug: "homm2",
+        title: "HoMM2 Save Files Editor",
+        description: "Edit verified Heroes of Might and Magic II save fields: resources, heroes, rosters, visibility, and mapped town data.",
+        badge: "editor",
+        tags: ["games", "binary", "save-files", "local-only"],
+        accent: "var(--accent)",
+        href: "homm2/",
+        readme: "homm2/README.md"
+      },
+      {
+        slug: "py-versions",
+        title: "PEP 440 Specifier Helper",
+        description: "Explain and compare Python package version specifiers without installing Python tooling.",
+        badge: "helper",
+        tags: ["python", "versions", "packaging"],
+        accent: "var(--blue)",
+        href: "py-versions/",
+        readme: "py-versions/README.md"
+      },
+      {
+        slug: "talk-counter",
+        title: "Talk Counter",
+        description: "Visible talk timer for presentations and discussions. Fullscreen, keyboard shortcuts, saved settings.",
+        badge: "timer",
+        tags: ["presentation", "timer", "fullscreen"],
+        accent: "var(--warn)",
+        href: "talk-counter/",
+        readme: "talk-counter/README.md"
+      }
+    ];
+
+    const grid = document.getElementById("grid");
+    const tagRail = document.getElementById("tagRail");
+    const search = document.getElementById("search");
+    const visibleCountEl = document.getElementById("visibleCount");
+    const totalCountEl = document.getElementById("totalCount");
+    const visibleCountMeta = document.getElementById("visibleCountMeta");
+    const lastUpdated = document.getElementById("lastUpdated");
+    const cardTemplate = document.getElementById("cardTemplate");
+
+    const state = { query: "", activeTag: null };
+
+    const tagCounts = new Map();
+    for (const tool of TOOLS) {
+      for (const tag of tool.tags) {
+        tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+      }
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, ch => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[ch]);
+    }
+
+    function highlight(text, query) {
+      const safe = escapeHtml(text);
+      if (!query) return safe;
+      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return safe.replace(new RegExp(`(${escaped})`, "ig"), "<mark>$1</mark>");
+    }
+
+    function matches(tool, query, tag) {
+      if (tag && !tool.tags.includes(tag)) return false;
+      if (!query) return true;
+      const q = query.toLowerCase();
+      return (
+        tool.title.toLowerCase().includes(q) ||
+        tool.slug.toLowerCase().includes(q) ||
+        tool.description.toLowerCase().includes(q) ||
+        tool.tags.some(t => t.toLowerCase().includes(q))
+      );
+    }
+
+    function renderTagRail() {
+      tagRail.innerHTML = "";
+      const allBtn = document.createElement("button");
+      allBtn.type = "button";
+      allBtn.className = "tag";
+      allBtn.setAttribute("aria-pressed", state.activeTag === null ? "true" : "false");
+      allBtn.innerHTML = `all<span class="num">${TOOLS.length}</span>`;
+      allBtn.addEventListener("click", () => { state.activeTag = null; render(); });
+      tagRail.appendChild(allBtn);
+
+      const sorted = [...tagCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      for (const [tag, count] of sorted) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "tag";
+        btn.setAttribute("aria-pressed", state.activeTag === tag ? "true" : "false");
+        btn.innerHTML = `${escapeHtml(tag)}<span class="num">${count}</span>`;
+        btn.addEventListener("click", () => {
+          state.activeTag = state.activeTag === tag ? null : tag;
+          render();
+        });
+        tagRail.appendChild(btn);
+      }
+    }
+
+    function renderCards() {
+      grid.innerHTML = "";
+      const q = state.query.trim();
+      const filtered = TOOLS.filter(t => matches(t, q, state.activeTag));
+
+      if (filtered.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.innerHTML = `no tools match <strong>“${escapeHtml(q || state.activeTag || "")}”</strong><br><button type="button" id="resetBtn">reset filters</button>`;
+        grid.appendChild(empty);
+        empty.querySelector("#resetBtn").addEventListener("click", resetFilters);
+      } else {
+        for (const tool of filtered) {
+          const node = cardTemplate.content.firstElementChild.cloneNode(true);
+          node.style.setProperty("--card-accent", tool.accent);
+          node.querySelector(".stretched").href = tool.href;
+          node.querySelector(".stretched").setAttribute("aria-label", `Open ${tool.title}`);
+          node.querySelector(".slug").textContent = tool.slug;
+          node.querySelector(".badge").textContent = tool.badge;
+          node.querySelector("h2").innerHTML = highlight(tool.title, q);
+          node.querySelector("p").innerHTML = highlight(tool.description, q);
+          const tagsList = node.querySelector(".card-tags");
+          for (const tag of tool.tags) {
+            const li = document.createElement("li");
+            li.innerHTML = highlight(tag, q);
+            tagsList.appendChild(li);
+          }
+          node.querySelector(".readme").href = tool.readme;
+          node.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") window.location.href = tool.href;
+          });
+          grid.appendChild(node);
+        }
+      }
+
+      visibleCountEl.textContent = filtered.length;
+      totalCountEl.textContent = TOOLS.length;
+      visibleCountMeta.textContent = `${filtered.length} of ${TOOLS.length} tool${TOOLS.length === 1 ? "" : "s"}`;
+    }
+
+    function render() { renderTagRail(); renderCards(); }
+
+    function resetFilters() {
+      state.query = "";
+      state.activeTag = null;
+      search.value = "";
+      render();
+      search.focus();
+    }
+
+    search.addEventListener("input", () => {
+      state.query = search.value;
+      renderCards();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      const target = e.target;
+      const inField = target instanceof HTMLElement &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+
+      if (e.key === "/" && !inField) {
+        e.preventDefault();
+        search.focus();
+        search.select();
+        return;
+      }
+
+      if (e.key === "Escape" && (inField || state.query || state.activeTag)) {
+        e.preventDefault();
+        resetFilters();
+        return;
+      }
+
+      if (e.key === "Enter" && document.activeElement === search) {
+        const firstCard = grid.querySelector(".card .stretched");
+        if (firstCard) window.location.href = firstCard.getAttribute("href");
+      }
+    });
+
+    try {
+      const d = new Date(document.lastModified);
+      lastUpdated.textContent = isNaN(d.getTime()) ? "—" : d.toISOString().slice(0, 10);
+    } catch {
+      lastUpdated.textContent = "—";
+    }
+
+    // ---------- Theme toggle ----------
+    const themeToggle = document.getElementById("themeToggle");
+    const themeLabel = document.getElementById("themeLabel");
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+
+    function effectiveTheme() {
+      const explicit = document.documentElement.getAttribute("data-theme");
+      if (explicit === "light" || explicit === "dark") return explicit;
+      return mql.matches ? "dark" : "light";
+    }
+
+    function updateThemeLabel() {
+      const next = effectiveTheme() === "dark" ? "light" : "dark";
+      themeLabel.textContent = next;
+      themeToggle.setAttribute("aria-label", `Switch to ${next} theme`);
+      themeToggle.title = `Switch to ${next} theme`;
+    }
+
+    themeToggle.addEventListener("click", () => {
+      const next = effectiveTheme() === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem("theme", next); } catch {}
+      updateThemeLabel();
+    });
+
+    mql.addEventListener?.("change", updateThemeLabel);
+    updateThemeLabel();
+
+    render();
+  </script>
+</body>
 </html>
