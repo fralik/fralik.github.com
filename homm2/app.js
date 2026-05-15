@@ -4,6 +4,11 @@
   const PLAYER_COLORS = ["Blue", "Green", "Red", "Yellow", "Orange", "Purple"];
   const HERO_CLASSES = ["(none)", "Knight", "Barbarian", "Sorceress", "Warlock", "Wizard", "Necromancer"];
   const TOWN_FACTIONS = ["Knight", "Barbarian", "Sorceress", "Warlock", "Wizard", "Necromancer", "Random"];
+  const SECONDARY_SKILLS = [
+    "Pathfinding", "Archery", "Logistics", "Scouting", "Diplomacy", "Navigation", "Leadership",
+    "Wisdom", "Mysticism", "Luck", "Ballistics", "Eagle Eye", "Necromancy", "Estates"
+  ];
+  const SECONDARY_SKILL_LEVELS = ["None", "Basic", "Advanced", "Expert"];
   const CREATURES = [
     "Peasant", "Archer", "Ranger", "Pikeman", "Veteran Pikeman", "Swordsman", "Master Swordsman",
     "Cavalry", "Champion", "Paladin", "Crusader", "Goblin", "Orc", "Orc Chief", "Wolf", "Ogre",
@@ -57,6 +62,8 @@
     defense: 0x36,
     spellPower: 0x37,
     knowledge: 0x38,
+    secondarySkills: 0x6A,
+    secondarySkillSlots: 14,
     armyTypes: 0x5B,
     armyCounts: 0x60,
     artifacts: 0xCB,
@@ -72,12 +79,17 @@
     buildFlags: 0x00,
     dwellingStock: 0x05,
     upgradedDwellingStock: 0x11,
+    mageGuildSpellCounts: 0x37,
+    mageGuildLevels: 5,
+    mageGuildSpellsPerLevel: 3,
     owner: -0x18,
     faction: -0x16,
     name: 0x3E,
     nameSize: 14,
     slotId: 0x4B,
-    buildingBits: [0, 1, 2, 3, 4, 5, 7, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+    castleAbsentFlag: 0x20,
+    castleFlag: 0x40,
+    buildingBits: [0, 1, 2, 3, 4, 5, 6, 7, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
   };
 
   const RESOURCES = {
@@ -118,8 +130,8 @@
       id: "gxc",
       label: "Gold/expansion save (.GXC)",
       extensions: ["gxc"],
-      hero: { firstOffset: HERO.firstOffset, max: HERO.max, stride: HERO.stride },
-      town: { firstOffset: TOWN.firstOffset, max: TOWN.max, stride: TOWN.stride },
+      hero: { firstOffset: HERO.firstOffset, max: HERO.max, stride: HERO.stride, spellPoints: HERO.spellPoints },
+      town: { firstOffset: TOWN.firstOffset, max: TOWN.max, stride: TOWN.stride, mageGuildSpellCounts: TOWN.mageGuildSpellCounts },
       resources: { offset: RESOURCES.offset, names: RESOURCES.names },
       mapVisibility: MAP_VISIBILITY,
       playerRosters: PLAYER_ROSTERS,
@@ -134,8 +146,8 @@
       id: "gmc",
       label: "Standard campaign save (.GMC)",
       extensions: ["gmc"],
-      hero: { firstOffset: 0x08ED, max: 54, stride: 0xEC },
-      town: { firstOffset: 0x3AFA, max: 72, stride: TOWN.stride, mageGuildPrefixBit: 0 },
+      hero: { firstOffset: 0x08ED, max: 54, stride: 0xEC, spellPoints: 0xE2 },
+      town: { firstOffset: 0x3AFA, max: 72, stride: TOWN.stride, mageGuildPrefixBit: 0, mageGuildSpellCounts: TOWN.mageGuildSpellCounts },
       resources: { offset: 0x0497, names: RESOURCES.names },
       mapVisibility: GMC_MAP_VISIBILITY,
       playerRosters: GMC_PLAYER_ROSTERS,
@@ -477,6 +489,16 @@
       })
     )));
 
+    const secondarySkillFields = SECONDARY_SKILLS.map((skillName, skillIndex) =>
+      selectField(skillName, String(hero.secondarySkills[skillIndex] || 0), secondarySkillLevelOptions(), value => {
+        hero.secondarySkills[skillIndex] = Number(value);
+        writeHero(hero);
+        markDirty();
+        renderHeroEditor(hero);
+      })
+    );
+    layout.append(section("Secondary Skills", div("section-grid wide-grid", ...secondarySkillFields)));
+
     const armyGrid = div("army-grid");
     armyGrid.append(labelText("Slot"), labelText("Creature"), labelText("Count"));
     for (let slot = 0; slot < 5; slot += 1) {
@@ -546,6 +568,12 @@
     }
 
     const buildingGrid = div("building-grid");
+    buildingGrid.append(checkField("Castle", town.hasCastle, checked => {
+      setTownCastle(town, checked);
+      writeTown(town);
+      markDirty();
+      renderTownEditor(town);
+    }));
     buildingGrid.append(checkField("Faction info building", town.hasThievesGuild, checked => {
       town.buildFlagsPrefix = setBit(town.buildFlagsPrefix, 1, checked);
       writeTown(town);
@@ -637,7 +665,7 @@
       defense: state.buffer[offset + HERO.defense],
       spellPower: state.buffer[offset + HERO.spellPower],
       knowledge: state.buffer[offset + HERO.knowledge],
-      spellPoints: readU16(offset + HERO.spellPoints),
+      spellPoints: readU16(offset + heroFieldOffset("spellPoints")),
       movePoints: readU32(offset + HERO.movePoints),
       moveBonus: readU32(offset + HERO.moveBonus),
       sentinel: readU16(offset + HERO.sentinel),
@@ -650,6 +678,7 @@
       townName: "",
       townOwnerPlayerId: null,
       armyOffset: offset + HERO.armyTypes,
+      secondarySkills: [],
       armyTypes: [],
       armyCounts: [],
       artifacts: []
@@ -659,6 +688,9 @@
     hero.isOnMap = hero.hasRecruitedSentinel || hero.positionX !== 0 || hero.positionY !== 0;
     hero.ownerPlayerId = hero.hasRecruitedSentinel && hero.playerId < 6 ? hero.playerId : null;
     hero.ownerSource = hero.ownerPlayerId == null ? "" : "Hero record sentinel";
+    for (let slot = 0; slot < HERO.secondarySkillSlots; slot += 1) {
+      hero.secondarySkills.push(state.buffer[offset + heroFieldOffset("secondarySkills") + slot]);
+    }
     for (let slot = 0; slot < 5; slot += 1) {
       hero.armyTypes.push(state.buffer[offset + HERO.armyTypes + slot]);
       hero.armyCounts.push(readU16(offset + HERO.armyCounts + slot * 2));
@@ -674,7 +706,7 @@
     writeAscii(offset + HERO.name, HERO.nameSize, hero.name, 13);
     state.buffer[offset + HERO.portrait] = clamp(hero.portraitId, 0, 255);
     writeU32(offset + HERO.experience, hero.experience);
-    writeU16(offset + HERO.spellPoints, hero.spellPoints);
+    writeU16(offset + heroFieldOffset("spellPoints"), hero.spellPoints);
     writeU32(offset + HERO.movePoints, hero.movePoints);
     writeU32(offset + HERO.moveBonus, hero.moveBonus);
     state.buffer[offset + HERO.heroClass] = clamp(hero.heroClass, 0, 255);
@@ -682,6 +714,9 @@
     state.buffer[offset + HERO.defense] = clamp(hero.defense, 0, 255);
     state.buffer[offset + HERO.spellPower] = clamp(hero.spellPower, 0, 255);
     state.buffer[offset + HERO.knowledge] = clamp(hero.knowledge, 0, 255);
+    for (let slot = 0; slot < HERO.secondarySkillSlots; slot += 1) {
+      state.buffer[offset + heroFieldOffset("secondarySkills") + slot] = clamp(hero.secondarySkills[slot], 0, SECONDARY_SKILL_LEVELS.length - 1);
+    }
     for (let slot = 0; slot < 5; slot += 1) {
       state.buffer[hero.armyOffset + slot] = clamp(hero.armyTypes[slot], 0, 255);
       writeU16(hero.armyOffset + 5 + slot * 2, hero.armyCounts[slot]);
@@ -689,6 +724,11 @@
     for (let slot = 0; slot < HERO.artifactSlots; slot += 1) {
       state.buffer[offset + HERO.artifacts + slot] = clamp(hero.artifacts[slot], 0, 255);
     }
+  }
+
+  function heroFieldOffset(field) {
+    const layout = state.formatProfile && state.formatProfile.hero;
+    return layout && layout[field] != null ? layout[field] : HERO[field];
   }
 
   function updateHero(hero, property, value) {
@@ -743,6 +783,7 @@
     };
     town.hasThievesGuild = (town.buildFlagsPrefix & 0x02) !== 0;
     town.hasTavern = (town.buildFlagsPrefix & 0x04) !== 0;
+    town.hasCastle = (town.buildFlagsPrefix & TOWN.castleFlag) !== 0;
     town.mageGuildLevel = town.buildFlags >>> 24;
     for (let slot = 0; slot < 6; slot += 1) town.dwellingStock.push(readU16(offset + TOWN.dwellingStock + slot * 2));
     for (let slot = 0; slot < 5; slot += 1) town.upgradedDwellingStock.push(readU16(offset + TOWN.upgradedDwellingStock + slot * 2));
@@ -762,13 +803,31 @@
     if (mageGuildPrefixBit != null) {
       town.buildFlagsPrefix = setBit(town.buildFlagsPrefix, mageGuildPrefixBit, town.mageGuildLevel > 0);
     }
+    writeTownMageGuildSpellCounts(town);
     if (offset > 0) state.buffer[offset - 1] = town.buildFlagsPrefix;
     writeU32(offset + TOWN.buildFlags, town.buildFlags);
     for (let slot = 0; slot < 6; slot += 1) writeU16(offset + TOWN.dwellingStock + slot * 2, town.dwellingStock[slot] || 0);
     for (let slot = 0; slot < 5; slot += 1) writeU16(offset + TOWN.upgradedDwellingStock + slot * 2, town.upgradedDwellingStock[slot] || 0);
     town.hasThievesGuild = (town.buildFlagsPrefix & 0x02) !== 0;
     town.hasTavern = (town.buildFlagsPrefix & 0x04) !== 0;
+    town.hasCastle = (town.buildFlagsPrefix & TOWN.castleFlag) !== 0;
     town.mageGuildLevel = town.buildFlags >>> 24;
+  }
+
+  function setTownCastle(town, enabled) {
+    town.buildFlagsPrefix = enabled
+      ? (town.buildFlagsPrefix | TOWN.castleFlag) & ~TOWN.castleAbsentFlag
+      : (town.buildFlagsPrefix | TOWN.castleAbsentFlag) & ~TOWN.castleFlag;
+    town.hasCastle = enabled;
+  }
+
+  function writeTownMageGuildSpellCounts(town) {
+    const spellCountsOffset = state.formatProfile.town && state.formatProfile.town.mageGuildSpellCounts;
+    if (spellCountsOffset == null) return;
+    const level = clamp(town.mageGuildLevel, 0, TOWN.mageGuildLevels);
+    for (let index = 0; index < TOWN.mageGuildLevels; index += 1) {
+      state.buffer[town.fileOffset + spellCountsOffset + index] = index < level ? TOWN.mageGuildSpellsPerLevel : 0;
+    }
   }
 
   function readPlayerRosters() {
@@ -1090,9 +1149,13 @@
     return options;
   }
 
+  function secondarySkillLevelOptions() {
+    return SECONDARY_SKILL_LEVELS.map((label, index) => ({ value: String(index), label }));
+  }
+
   function townBuildingName(bit, factionId) {
     return factionTownBuildingName(bit, factionId) || ({
-      0: "Left Turret", 1: "Right Turret", 2: "Marketplace", 3: "Race growth building", 4: "Moat", 5: "Race special building", 7: "Captain's Quarters",
+      0: "Left Turret", 1: "Right Turret", 2: "Marketplace", 3: "Race growth building", 4: "Moat", 5: "Race special building", 6: "Well", 7: "Captain's Quarters",
       11: "Dwelling 1", 12: "Dwelling 2", 13: "Dwelling 3", 14: "Dwelling 4", 15: "Dwelling 5", 16: "Dwelling 6",
       17: "Upgraded Dwelling 2", 18: "Upgraded Dwelling 3", 19: "Upgraded Dwelling 4", 20: "Upgraded Dwelling 5", 21: "Upgraded Dwelling 6"
     }[bit] || `Unknown (bit ${bit})`);

@@ -33,6 +33,7 @@ Per hero:
 - Class (Knight … Necromancer)
 - Experience
 - Primary skills: Attack / Defense / Spell Power / Knowledge
+- Secondary skills: Pathfinding, Archery, Logistics, Scouting, Diplomacy, Navigation, Leadership, Wisdom, Mysticism, Luck, Ballistics, Eagle Eye, Necromancy, and Estates levels
 - Spell points and current-day movement values, including a refill-current-day action. Movement is recalculated by the game on a new day from army speed, skills, artifacts, and map bonuses.
 - Army (5 slots: creature type ID + count)
 - Artifact bag possession (14 slots, `0xFF` empty)
@@ -40,7 +41,7 @@ Per hero:
 
 Per town:
 
-- Building flags, including faction-specific dwellings, turrets, Marketplace, moat, Captain's Quarters, and special buildings
+- Building flags, including castle creation, faction-specific dwellings, turrets, Marketplace, moat, Captain's Quarters, and special buildings
 - Faction info building and Tavern flags
 - Mage Guild level
 - Dwelling creature stock
