@@ -41,12 +41,13 @@ Per hero:
 
 Per town:
 
-- Building flags, including castle creation, faction-specific dwellings, turrets, Marketplace, moat, Captain's Quarters, and special buildings
+- Building flags, including castle creation with its adventure-map exterior, faction-specific dwellings, turrets, Marketplace, moat, Captain's Quarters, and special buildings
 - Faction info building and Tavern flags
 - Mage Guild level
 - Dwelling creature stock
 
-The record list can be filtered by name. Heroes can also be filtered by class and owner.
+The record list can be filtered by name. Heroes can be filtered by class and owner;
+towns can be filtered by town class and owner.
 Hero ownership is primarily derived from the player roster blocks. If a hero is not in a
 roster, the hero-record sentinel is used as a fallback: `0xFEFF` means recruited,
 `0xFFFF` means recruitment pool. For recruited heroes, byte `+0x21` is treated as the

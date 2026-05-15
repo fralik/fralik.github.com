@@ -84,6 +84,8 @@
     mageGuildSpellsPerLevel: 3,
     owner: -0x18,
     faction: -0x16,
+    mapX: -0x15,
+    mapY: -0x14,
     name: 0x3E,
     nameSize: 14,
     slotId: 0x4B,
@@ -107,6 +109,18 @@
   const GMC_MAP_VISIBILITY = {
     ...MAP_VISIBILITY,
     offset: 0x612F
+  };
+
+  const GMC_MAP_OBJECTS = {
+    offset: 0x7670,
+    width: 72,
+    height: 72,
+    tileStride: 12,
+    spriteFields: [0, 4],
+    townSpriteStart: 0x50,
+    castleSpriteStart: 0x40,
+    spriteCount: 0x10,
+    castleFootprint: { left: 0, top: -2, right: 7, bottom: 2 }
   };
 
   const PLAYER_ROSTERS = {
@@ -150,6 +164,7 @@
       town: { firstOffset: 0x3AFA, max: 72, stride: TOWN.stride, mageGuildPrefixBit: 0, mageGuildSpellCounts: TOWN.mageGuildSpellCounts },
       resources: { offset: 0x0497, names: RESOURCES.names },
       mapVisibility: GMC_MAP_VISIBILITY,
+      mapObjects: GMC_MAP_OBJECTS,
       playerRosters: GMC_PLAYER_ROSTERS,
       supports: {
         heroOwnership: true,
@@ -173,6 +188,10 @@
     revealOnOwnerChange: true,
     resources: {},
     activeTab: "heroes",
+    filters: {
+      heroes: { classValue: "", ownerValue: "" },
+      towns: { classValue: "", ownerValue: "" }
+    },
     selectedType: "heroes",
     selectedIndex: null
   };
@@ -201,22 +220,20 @@
     ui.downloadButton.addEventListener("click", downloadEditedSave);
     ui.closeButton.addEventListener("click", closeFile);
     ui.nameFilter.addEventListener("input", renderRecordList);
-    ui.classFilter.addEventListener("change", renderRecordList);
-    ui.ownerFilter.addEventListener("change", renderRecordList);
+    ui.classFilter.addEventListener("change", () => {
+      activeFilters().classValue = ui.classFilter.value;
+      renderRecordList();
+    });
+    ui.ownerFilter.addEventListener("change", () => {
+      activeFilters().ownerValue = ui.ownerFilter.value;
+      renderRecordList();
+    });
     ui.heroesTab.addEventListener("click", () => setActiveTab("heroes"));
     ui.townsTab.addEventListener("click", () => setActiveTab("towns"));
   }
 
   function populateFilters() {
-    setOptions(ui.classFilter, [{ value: "", label: "All classes" }].concat(
-      HERO_CLASSES.slice(1).map((label, index) => ({ value: String(index + 1), label }))
-    ));
-    setOptions(ui.ownerFilter, [
-      { value: "", label: "All heroes" },
-      { value: "recruited", label: "All owned" },
-      { value: "available", label: "Available" },
-      ...PLAYER_COLORS.map((label, index) => ({ value: String(index), label: `${label} owned` }))
-    ]);
+    updateFilterOptions();
   }
 
   async function handleFileOpen(event) {
@@ -246,7 +263,7 @@
     state.activeTab = "heroes";
     state.selectedType = "heroes";
     state.selectedIndex = state.heroes.length ? 0 : null;
-    if (!state.formatProfile.supports.heroOwnership) ui.ownerFilter.value = "";
+    if (!state.formatProfile.supports.heroOwnership) state.filters.heroes.ownerValue = "";
     setEnabled(true);
     renderAll();
   }
@@ -317,12 +334,36 @@
 
   function renderTabs() {
     const heroesActive = state.activeTab === "heroes";
+    updateFilterOptions();
     ui.heroesTab.classList.toggle("active", heroesActive);
     ui.townsTab.classList.toggle("active", !heroesActive);
     ui.heroesTab.setAttribute("aria-selected", String(heroesActive));
     ui.townsTab.setAttribute("aria-selected", String(!heroesActive));
-    ui.classFilter.disabled = !state.buffer || !heroesActive;
-    ui.ownerFilter.disabled = !state.buffer || !heroesActive || !state.formatProfile || !state.formatProfile.supports.heroOwnership;
+    ui.classFilter.disabled = !state.buffer;
+    ui.ownerFilter.disabled = !state.buffer || (heroesActive && (!state.formatProfile || !state.formatProfile.supports.heroOwnership));
+  }
+
+  function updateFilterOptions() {
+    const filters = activeFilters();
+    if (state.activeTab === "towns") {
+      setOptions(ui.classFilter, [{ value: "", label: "All town classes" }].concat(
+        TOWN_FACTIONS.map((label, index) => ({ value: String(index), label }))
+      ));
+      setOptions(ui.ownerFilter, townOwnerFilterOptions());
+    } else {
+      setOptions(ui.classFilter, [{ value: "", label: "All hero classes" }].concat(
+        HERO_CLASSES.slice(1).map((label, index) => ({ value: String(index + 1), label }))
+      ));
+      setOptions(ui.ownerFilter, heroOwnerFilterOptions());
+    }
+    setFilterSelectValue(ui.classFilter, filters, "classValue");
+    setFilterSelectValue(ui.ownerFilter, filters, "ownerValue");
+  }
+
+  function setFilterSelectValue(select, filters, property) {
+    const hasOption = Array.from(select.options).some(option => option.value === filters[property]);
+    select.value = hasOption ? filters[property] : "";
+    filters[property] = select.value;
   }
 
   function renderResources() {
@@ -368,7 +409,7 @@
       meta.className = "record-meta";
       meta.textContent = state.activeTab === "heroes"
         ? `${heroClass(record.implicitClass)} | ${heroOwner(record)} | XP ${formatNumber(record.experience)}`
-        : `${townFaction(record.factionId)} | slot ${record.slotId}`;
+        : `${townFaction(record.factionId)} | ${townOwner(record)} | slot ${record.slotId}`;
       button.append(name, offset, meta);
       ui.recordList.append(button);
     }
@@ -383,11 +424,21 @@
 
   function filteredRecords() {
     const text = ui.nameFilter.value.trim().toLowerCase();
+    const filters = activeFilters();
     if (state.activeTab === "towns") {
-      return state.towns.filter(town => !text || town.name.toLowerCase().includes(text));
+      const cls = filters.classValue;
+      const owner = filters.ownerValue;
+      return state.towns.filter(town => {
+        if (text && !town.name.toLowerCase().includes(text)) return false;
+        if (cls && town.factionId !== Number(cls)) return false;
+        if (owner === "owned" && town.ownerPlayerId == null) return false;
+        if (owner === "unowned" && town.ownerPlayerId != null) return false;
+        if (owner !== "" && owner !== "owned" && owner !== "unowned" && town.ownerPlayerId !== Number(owner)) return false;
+        return true;
+      });
     }
-    const cls = ui.classFilter.value;
-    const owner = ui.ownerFilter.value;
+    const cls = filters.classValue;
+    const owner = filters.ownerValue;
     return state.heroes.filter(hero => {
       if (text && !hero.name.toLowerCase().includes(text)) return false;
       if (cls && hero.implicitClass !== Number(cls)) return false;
@@ -399,6 +450,7 @@
   }
 
   function setActiveTab(tab) {
+    syncFilterValues();
     state.activeTab = tab;
     state.selectedType = tab;
     const collection = tab === "heroes" ? state.heroes : state.towns;
@@ -406,6 +458,16 @@
     renderTabs();
     renderRecordList();
     renderSelectedEditor();
+  }
+
+  function activeFilters() {
+    return state.filters[state.activeTab] || state.filters.heroes;
+  }
+
+  function syncFilterValues() {
+    const filters = activeFilters();
+    filters.classValue = ui.classFilter.value;
+    filters.ownerValue = ui.ownerFilter.value;
   }
 
   function selectRecord(type, index) {
@@ -775,6 +837,8 @@
       slotId: state.buffer[offset + TOWN.slotId],
       ownerPlayerId: readTownOwner(offset),
       factionId: offset + TOWN.faction >= 0 ? state.buffer[offset + TOWN.faction] : 0xFF,
+      mapX: readTownMapCoordinate(offset + TOWN.mapX),
+      mapY: readTownMapCoordinate(offset + TOWN.mapY),
       visitingHeroIndex: state.buffer[offset + TOWN.visitingHero],
       buildFlagsPrefix: offset > 0 ? state.buffer[offset - 1] : 0,
       buildFlags: readU32(offset + TOWN.buildFlags),
@@ -795,6 +859,12 @@
     if (ownerOffset < 0 || ownerOffset >= state.buffer.length) return null;
     const owner = state.buffer[ownerOffset];
     return owner < PLAYER_COLORS.length ? owner : null;
+  }
+
+  function readTownMapCoordinate(offset) {
+    if (offset < 0 || offset >= state.buffer.length) return null;
+    const coordinate = state.buffer[offset];
+    return coordinate === 0xFF ? null : coordinate;
   }
 
   function writeTown(town) {
@@ -819,6 +889,45 @@
       ? (town.buildFlagsPrefix | TOWN.castleFlag) & ~TOWN.castleAbsentFlag
       : (town.buildFlagsPrefix | TOWN.castleAbsentFlag) & ~TOWN.castleFlag;
     town.hasCastle = enabled;
+    syncTownCastleMapObject(town, enabled);
+  }
+
+  function syncTownCastleMapObject(town, enabled) {
+    const mapObjects = state.formatProfile && state.formatProfile.mapObjects;
+    if (!mapObjects || !hasValidTownMapPosition(town, mapObjects)) return;
+
+    const footprint = mapObjects.castleFootprint;
+    const sourceStart = enabled ? mapObjects.townSpriteStart : mapObjects.castleSpriteStart;
+    const targetStart = enabled ? mapObjects.castleSpriteStart : mapObjects.townSpriteStart;
+    const sourceEnd = sourceStart + mapObjects.spriteCount;
+    const startY = Math.max(0, town.mapY + footprint.top);
+    const endY = Math.min(mapObjects.height - 1, town.mapY + footprint.bottom);
+    const startX = Math.max(0, town.mapX + footprint.left);
+    const endX = Math.min(mapObjects.width - 1, town.mapX + footprint.right);
+
+    for (let y = startY; y <= endY; y += 1) {
+      for (let x = startX; x <= endX; x += 1) {
+        const tileOffset = mapObjects.offset + (y * mapObjects.width + x) * mapObjects.tileStride;
+        for (const field of mapObjects.spriteFields) {
+          const spriteOffset = tileOffset + field;
+          const sprite = state.buffer[spriteOffset];
+          if (sprite >= sourceStart && sprite < sourceEnd) {
+            state.buffer[spriteOffset] = targetStart + (sprite - sourceStart);
+          }
+        }
+      }
+    }
+  }
+
+  function hasValidTownMapPosition(town, mapObjects) {
+    const mapEnd = mapObjects.offset + mapObjects.width * mapObjects.height * mapObjects.tileStride;
+    return state.buffer.length >= mapEnd
+      && town.mapX != null
+      && town.mapY != null
+      && town.mapX >= 0
+      && town.mapX < mapObjects.width
+      && town.mapY >= 0
+      && town.mapY < mapObjects.height;
   }
 
   function writeTownMageGuildSpellCounts(town) {
@@ -1122,6 +1231,28 @@
     return [
       { value: "", label: "Unowned / available" },
       ...PLAYER_COLORS.map((label, index) => ({ value: String(index), label }))
+    ];
+  }
+
+  function heroOwnerFilterOptions() {
+    return [
+      { value: "", label: "All heroes" },
+      { value: "recruited", label: "All owned" },
+      { value: "available", label: "Available" },
+      ...PLAYER_COLORS.map((label, index) => ({ value: String(index), label: `${label} owned` }))
+    ];
+  }
+
+  function townOwner(town) {
+    return town.ownerPlayerId == null ? "Unowned" : playerColor(town.ownerPlayerId);
+  }
+
+  function townOwnerFilterOptions() {
+    return [
+      { value: "", label: "All towns" },
+      { value: "owned", label: "All owned" },
+      { value: "unowned", label: "Unowned" },
+      ...PLAYER_COLORS.map((label, index) => ({ value: String(index), label: `${label} owned` }))
     ];
   }
 
