@@ -30,7 +30,7 @@ Per hero:
 - Name (max 13 ASCII chars)
 - Owner assignment through the player hero rosters
 - Portrait ID
-- Class (Knight … Necromancer)
+- Class display (Knight … Necromancer) and level
 - Experience
 - Primary skills: Attack / Defense / Spell Power / Knowledge
 - Secondary skills: Pathfinding, Archery, Logistics, Scouting, Diplomacy, Navigation, Leadership, Wisdom, Mysticism, Luck, Ballistics, Eagle Eye, Necromancy, and Estates levels
@@ -48,18 +48,20 @@ Per town:
 
 The record list can be filtered by name. Heroes can be filtered by class and owner;
 towns can be filtered by town class and owner.
-Hero ownership is primarily derived from the player roster blocks. If a hero is not in a
-roster, the hero-record sentinel is used as a fallback: `0xFEFF` means recruited,
-`0xFFFF` means recruitment pool. For recruited heroes, byte `+0x21` is treated as the
-owner player index: `0` Blue, `1` Green, `2` Red, `3` Yellow, `4` Orange, `5` Purple.
+Hero ownership is primarily derived from the player roster blocks. For `.GXC` saves, if
+a hero is not in a roster, the hero-record sentinel is used as a fallback: `0xFEFF`
+means recruited, `0xFFFF` means recruitment pool. For recruited fallback heroes, byte
+`+0x21` is treated as the owner player index: `0` Blue, `1` Green, `2` Red, `3` Yellow,
+`4` Orange, `5` Purple. Standard `.GMC` campaign saves treat roster blocks as
+authoritative because their hero-record ownership bytes can contain stale values.
 
 ## Detection
 
 Each save type is detected through a format profile. `.GXC` heroes are anchored at `0x7FA`
 with stride `0xFA`; `.GMC` standard-campaign heroes are anchored at `0x08ED` with stride
 `0xEC`. Records are accepted when they match the header signature: printable ASCII name
-padded with NULs, portrait ID < 128, sentinel `0xFEFF` or `0xFFFF` at `+0x1F`, and class
-byte < 16.
+padded with NULs, portrait ID < 128, and sentinel `0xFEFF` or `0xFFFF` at `+0x1F`.
+Hero class is derived from the record's fixed table slot; byte `+0x33` stores hero level.
 
 Town tables are also profile-based. `.GXC` town editing remains anchored at `0x3CFB`.
 `.GMC` town records are currently identified from `0x3AFA` for display and raw-byte inspection.

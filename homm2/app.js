@@ -57,13 +57,16 @@
     movePoints: 0x27,
     moveBonus: 0x2B,
     experience: 0x2F,
-    heroClass: 0x33,
+    level: 0x33,
     attack: 0x35,
     defense: 0x36,
     spellPower: 0x37,
     knowledge: 0x38,
     secondarySkills: 0x6A,
+    secondarySkillOrder: 0x78,
+    secondarySkillCount: 0x86,
     secondarySkillSlots: 14,
+    secondarySkillVisibleSlots: 8,
     armyTypes: 0x5B,
     armyCounts: 0x60,
     artifacts: 0xCB,
@@ -151,6 +154,7 @@
       playerRosters: PLAYER_ROSTERS,
       supports: {
         heroOwnership: true,
+        heroRecordOwnershipFallback: true,
         mapVisibility: true,
         townBuildings: true,
         dwellingStock: true
@@ -168,6 +172,7 @@
       playerRosters: GMC_PLAYER_ROSTERS,
       supports: {
         heroOwnership: true,
+        heroRecordOwnershipFallback: false,
         mapVisibility: true,
         townBuildings: true,
         dwellingStock: true
@@ -519,7 +524,8 @@
         ? selectField("Owner", heroOwnerSelectValue(hero), heroOwnerOptions(), value => setHeroOwner(hero, value))
         : readonlyField("Owner", heroOwner(hero)),
       numericField("Portrait ID", hero.portraitId, 0, 255, value => updateHero(hero, "portraitId", value)),
-      selectField("Class", String(hero.implicitClass), HERO_CLASSES.map((label, index) => ({ value: String(index), label })), value => updateHero(hero, "heroClass", Number(value))),
+      readonlyField("Class", heroClass(hero.implicitClass)),
+      numericField("Level", hero.level, 0, 255, value => updateHero(hero, "level", value)),
       numericField("Experience", hero.experience, 0, 0xFFFFFFFF, value => updateHero(hero, "experience", value))
     ];
 
@@ -709,7 +715,7 @@
     if (buffer[offset + HERO.portrait] > 127) return false;
     const sentinel = readU16Buffer(buffer, offset + HERO.sentinel);
     if (sentinel !== 0xFEFF && sentinel !== 0xFFFF) return false;
-    return buffer[offset + HERO.heroClass] <= 15;
+    return true;
   }
 
   function readHero(offset, index) {
@@ -719,7 +725,7 @@
       name: readAscii(offset + HERO.name, HERO.nameSize),
       portraitId: state.buffer[offset + HERO.portrait],
       experience: readU32(offset + HERO.experience),
-      heroClass: state.buffer[offset + HERO.heroClass],
+      level: state.buffer[offset + HERO.level],
       implicitClass: Math.floor(index / 9) + 1,
       positionX: readI32(offset + HERO.positionX),
       positionY: readI32(offset + HERO.positionY),
@@ -741,6 +747,8 @@
       townOwnerPlayerId: null,
       armyOffset: offset + HERO.armyTypes,
       secondarySkills: [],
+      secondarySkillOrder: [],
+      secondarySkillCount: 0,
       armyTypes: [],
       armyCounts: [],
       artifacts: []
@@ -748,11 +756,13 @@
     hero.hasRecruitedSentinel = hero.sentinel === 0xFEFF;
     hero.isRecruited = hero.hasRecruitedSentinel;
     hero.isOnMap = hero.hasRecruitedSentinel || hero.positionX !== 0 || hero.positionY !== 0;
-    hero.ownerPlayerId = hero.hasRecruitedSentinel && hero.playerId < 6 ? hero.playerId : null;
+    hero.ownerPlayerId = usesHeroRecordOwnershipFallback() && hero.hasRecruitedSentinel && hero.playerId < 6 ? hero.playerId : null;
     hero.ownerSource = hero.ownerPlayerId == null ? "" : "Hero record sentinel";
     for (let slot = 0; slot < HERO.secondarySkillSlots; slot += 1) {
       hero.secondarySkills.push(state.buffer[offset + heroFieldOffset("secondarySkills") + slot]);
+      hero.secondarySkillOrder.push(state.buffer[offset + heroFieldOffset("secondarySkillOrder") + slot]);
     }
+    hero.secondarySkillCount = readU16(offset + heroFieldOffset("secondarySkillCount"));
     for (let slot = 0; slot < 5; slot += 1) {
       hero.armyTypes.push(state.buffer[offset + HERO.armyTypes + slot]);
       hero.armyCounts.push(readU16(offset + HERO.armyCounts + slot * 2));
@@ -765,20 +775,23 @@
 
   function writeHero(hero) {
     const offset = hero.fileOffset;
+    normalizeSecondarySkillOrder(hero);
     writeAscii(offset + HERO.name, HERO.nameSize, hero.name, 13);
     state.buffer[offset + HERO.portrait] = clamp(hero.portraitId, 0, 255);
     writeU32(offset + HERO.experience, hero.experience);
     writeU16(offset + heroFieldOffset("spellPoints"), hero.spellPoints);
     writeU32(offset + HERO.movePoints, hero.movePoints);
     writeU32(offset + HERO.moveBonus, hero.moveBonus);
-    state.buffer[offset + HERO.heroClass] = clamp(hero.heroClass, 0, 255);
+    state.buffer[offset + HERO.level] = clamp(hero.level, 0, 255);
     state.buffer[offset + HERO.attack] = clamp(hero.attack, 0, 255);
     state.buffer[offset + HERO.defense] = clamp(hero.defense, 0, 255);
     state.buffer[offset + HERO.spellPower] = clamp(hero.spellPower, 0, 255);
     state.buffer[offset + HERO.knowledge] = clamp(hero.knowledge, 0, 255);
     for (let slot = 0; slot < HERO.secondarySkillSlots; slot += 1) {
       state.buffer[offset + heroFieldOffset("secondarySkills") + slot] = clamp(hero.secondarySkills[slot], 0, SECONDARY_SKILL_LEVELS.length - 1);
+      state.buffer[offset + heroFieldOffset("secondarySkillOrder") + slot] = clamp(hero.secondarySkillOrder[slot], 0, HERO.secondarySkillVisibleSlots);
     }
+    writeU16(offset + heroFieldOffset("secondarySkillCount"), hero.secondarySkillCount);
     for (let slot = 0; slot < 5; slot += 1) {
       state.buffer[hero.armyOffset + slot] = clamp(hero.armyTypes[slot], 0, 255);
       writeU16(hero.armyOffset + 5 + slot * 2, hero.armyCounts[slot]);
@@ -791,6 +804,36 @@
   function heroFieldOffset(field) {
     const layout = state.formatProfile && state.formatProfile.hero;
     return layout && layout[field] != null ? layout[field] : HERO[field];
+  }
+
+  function usesHeroRecordOwnershipFallback() {
+    return Boolean(state.formatProfile && state.formatProfile.supports.heroRecordOwnershipFallback);
+  }
+
+  function normalizeSecondarySkillOrder(hero) {
+    const orderedSkills = [];
+    const unorderedSkills = [];
+    const usedOrders = new Set();
+    for (let skillIndex = 0; skillIndex < HERO.secondarySkillSlots; skillIndex += 1) {
+      const level = clamp(hero.secondarySkills[skillIndex] || 0, 0, SECONDARY_SKILL_LEVELS.length - 1);
+      hero.secondarySkills[skillIndex] = level;
+      if (level === 0) continue;
+      const order = clamp(hero.secondarySkillOrder[skillIndex] || 0, 0, HERO.secondarySkillVisibleSlots);
+      if (order > 0 && !usedOrders.has(order)) {
+        orderedSkills.push({ skillIndex, order });
+        usedOrders.add(order);
+      } else {
+        unorderedSkills.push(skillIndex);
+      }
+    }
+
+    orderedSkills.sort((left, right) => left.order - right.order || left.skillIndex - right.skillIndex);
+    const visibleSkills = orderedSkills.map(item => item.skillIndex).concat(unorderedSkills).slice(0, HERO.secondarySkillVisibleSlots);
+    hero.secondarySkillOrder = Array(HERO.secondarySkillSlots).fill(0);
+    visibleSkills.forEach((skillIndex, position) => {
+      hero.secondarySkillOrder[skillIndex] = position + 1;
+    });
+    hero.secondarySkillCount = visibleSkills.length;
   }
 
   function updateHero(hero, property, value) {
@@ -1110,7 +1153,7 @@
       if (rosterEntry) {
         hero.ownerPlayerId = rosterEntry.playerId;
         hero.ownerSource = "Player roster";
-      } else if (hero.hasRecruitedSentinel && hero.playerId < PLAYER_COLORS.length) {
+      } else if (usesHeroRecordOwnershipFallback() && hero.hasRecruitedSentinel && hero.playerId < PLAYER_COLORS.length) {
         hero.ownerPlayerId = hero.playerId;
         hero.ownerSource = "Hero record sentinel";
       } else {
@@ -1219,7 +1262,7 @@
 
   function heroOwner(hero) {
     if (hero.ownerPlayerId != null) return playerColor(hero.ownerPlayerId);
-    if (hero.hasRecruitedSentinel) return `Unknown #${hero.playerId}`;
+    if (usesHeroRecordOwnershipFallback() && hero.hasRecruitedSentinel) return `Unknown #${hero.playerId}`;
     return hero.isOnMap ? "On map (neutral)" : "In recruitment pool";
   }
 
@@ -1237,7 +1280,7 @@
   function heroOwnerFilterOptions() {
     return [
       { value: "", label: "All heroes" },
-      { value: "recruited", label: "All owned" },
+      { value: "recruited", label: "All owned (by any player)" },
       { value: "available", label: "Available" },
       ...PLAYER_COLORS.map((label, index) => ({ value: String(index), label: `${label} owned` }))
     ];
@@ -1250,7 +1293,7 @@
   function townOwnerFilterOptions() {
     return [
       { value: "", label: "All towns" },
-      { value: "owned", label: "All owned" },
+      { value: "owned", label: "All owned (by any player)" },
       { value: "unowned", label: "Unowned" },
       ...PLAYER_COLORS.map((label, index) => ({ value: String(index), label: `${label} owned` }))
     ];
