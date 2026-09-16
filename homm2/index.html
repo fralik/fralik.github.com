@@ -14,7 +14,7 @@
     </div>
     <div class="actions">
       <label class="file-button">
-        <input id="fileInput" type="file" accept=".gxc,.GXC,.gmc,.GMC,application/octet-stream">
+        <input id="fileInput" type="file" accept=".gxc,.GXC,.gmc,.GMC,.savc,.SAVC,application/octet-stream">
         Open save file
       </label>
       <button id="downloadButton" type="button" disabled>Download Edited Save File</button>
@@ -31,7 +31,7 @@
         <div id="resourcesGrid" class="resource-grid muted">Open a save to edit resources.</div>
       </section>
 
-      <section class="panel filters-panel" aria-labelledby="filtersTitle">
+      <section id="filtersPanel" class="panel filters-panel" aria-labelledby="filtersTitle">
         <div class="panel-title">
           <h2 id="filtersTitle">Filters</h2>
         </div>
@@ -53,6 +53,7 @@
         <div class="tabs" role="tablist" aria-label="Record type">
           <button id="heroesTab" class="tab active" type="button" role="tab" aria-selected="true">Heroes</button>
           <button id="townsTab" class="tab" type="button" role="tab" aria-selected="false">Towns</button>
+          <button id="gatesTab" class="tab" type="button" role="tab" aria-selected="false">Gates</button>
         </div>
         <div id="recordCount" class="record-count">0 records</div>
         <div id="recordList" class="record-list" role="listbox" aria-label="Save records"></div>
@@ -73,6 +74,7 @@
     </label>
   </template>
 
+  <script src="savc.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

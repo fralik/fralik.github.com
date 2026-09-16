@@ -9,6 +9,19 @@
     "Wisdom", "Mysticism", "Luck", "Ballistics", "Eagle Eye", "Necromancy", "Estates"
   ];
   const SECONDARY_SKILL_LEVELS = ["None", "Basic", "Advanced", "Expert"];
+  const SAVC_SPELLS = [
+    "Fireball", "Fireblast", "Lightning Bolt", "Chain Lightning", "Teleport", "Cure", "Mass Cure",
+    "Resurrect", "True Resurrection", "Haste", "Mass Haste", "Slow", "Mass Slow", "Blind", "Bless",
+    "Mass Bless", "Stoneskin", "Steelskin", "Curse", "Mass Curse", "Holy Word", "Holy Shout",
+    "Anti-Magic", "Dispel Magic", "Mass Dispel", "Magic Arrow", "Berserker", "Armageddon",
+    "Elemental Storm", "Meteor Shower", "Paralyze", "Hypnotize", "Cold Ray", "Cold Ring",
+    "Disrupting Ray", "Death Ripple", "Death Wave", "Dragon Slayer", "Bloodlust", "Animate Dead",
+    "Mirror Image", "Shield", "Mass Shield", "Summon Earth Elemental", "Summon Air Elemental",
+    "Summon Fire Elemental", "Summon Water Elemental", "Earthquake", "View Mines", "View Resources",
+    "View Artifacts", "View Towns", "View Heroes", "View All", "Identify Hero", "Summon Boat",
+    "Dimension Door", "Town Gate", "Town Portal", "Visions", "Haunt", "Set Earth Guardian",
+    "Set Air Guardian", "Set Fire Guardian", "Set Water Guardian"
+  ];
   const CREATURES = [
     "Peasant", "Archer", "Ranger", "Pikeman", "Veteran Pikeman", "Swordsman", "Master Swordsman",
     "Cavalry", "Champion", "Paladin", "Crusader", "Goblin", "Orc", "Orc Chief", "Wolf", "Ogre",
@@ -126,6 +139,24 @@
     castleFootprint: { left: 0, top: -2, right: 7, bottom: 2 }
   };
 
+  const GXC_GATE_OBJECTS = {
+    marker: 1234,
+    markerSize: 12,
+    validDimensions: [36, 72, 108, 144],
+    tileStride: 12,
+    objectSheet: 2,
+    sprite: 3,
+    objectType: 9,
+    tentSheet: 0xFC,
+    barrierSheet: 0xFD,
+    barrierType: 0xF7,
+    tentType: 0xF8,
+    heroType: 0xAA,
+    colors: ["", "Aqua", "Blue", "Brown", "Gold", "Green", "Orange", "Purple", "Red"],
+    barrierSprites: [60, 66, 72, 78, 84, 90, 96, 102],
+    tentSprites: [110, 114, 118, 122, 126, 130, 134, 138]
+  };
+
   const PLAYER_ROSTERS = {
     firstHeroCount: 0x0316,
     stride: 0xCF,
@@ -134,6 +165,11 @@
     heroRoster: 0x03,
     heroRosterSlots: 7,
     emptyHero: 0xFF
+  };
+
+  const GXC_PLAYER_ROSTERS = {
+    ...PLAYER_ROSTERS,
+    tentVisitMasks: [0xC6, 0xC7]
   };
 
   const GMC_PLAYER_ROSTERS = {
@@ -151,7 +187,8 @@
       town: { firstOffset: TOWN.firstOffset, max: TOWN.max, stride: TOWN.stride, mageGuildSpellCounts: TOWN.mageGuildSpellCounts },
       resources: { offset: RESOURCES.offset, names: RESOURCES.names },
       mapVisibility: MAP_VISIBILITY,
-      playerRosters: PLAYER_ROSTERS,
+      gateObjects: GXC_GATE_OBJECTS,
+      playerRosters: GXC_PLAYER_ROSTERS,
       supports: {
         heroOwnership: true,
         heroRecordOwnershipFallback: true,
@@ -185,9 +222,12 @@
     view: null,
     fileName: "",
     formatProfile: null,
+    savc: null,
+    revision: 0,
     dirty: false,
     heroes: [],
     towns: [],
+    gates: [],
     playerHeroRosters: [],
     playerRosterBlocks: [],
     revealOnOwnerChange: true,
@@ -195,7 +235,8 @@
     activeTab: "heroes",
     filters: {
       heroes: { classValue: "", ownerValue: "" },
-      towns: { classValue: "", ownerValue: "" }
+      towns: { classValue: "", ownerValue: "" },
+      gates: { classValue: "", ownerValue: "" }
     },
     selectedType: "heroes",
     selectedIndex: null
@@ -207,11 +248,13 @@
     downloadButton: document.getElementById("downloadButton"),
     closeButton: document.getElementById("closeButton"),
     resourcesGrid: document.getElementById("resourcesGrid"),
+    filtersPanel: document.getElementById("filtersPanel"),
     nameFilter: document.getElementById("nameFilter"),
     classFilter: document.getElementById("classFilter"),
     ownerFilter: document.getElementById("ownerFilter"),
     heroesTab: document.getElementById("heroesTab"),
     townsTab: document.getElementById("townsTab"),
+    gatesTab: document.getElementById("gatesTab"),
     recordCount: document.getElementById("recordCount"),
     recordList: document.getElementById("recordList"),
     editor: document.getElementById("editor")
@@ -235,6 +278,7 @@
     });
     ui.heroesTab.addEventListener("click", () => setActiveTab("heroes"));
     ui.townsTab.addEventListener("click", () => setActiveTab("towns"));
+    ui.gatesTab.addEventListener("click", () => setActiveTab("gates"));
   }
 
   function populateFilters() {
@@ -244,25 +288,49 @@
   async function handleFileOpen(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
+    if (state.dirty && !window.confirm("Discard unsaved changes?")) {
+      event.target.value = "";
+      return;
+    }
+    ui.fileInput.disabled = true;
+    ui.closeButton.disabled = true;
+    ui.downloadButton.disabled = true;
+    ui.editor.inert = true;
+    ui.resourcesGrid.inert = true;
     try {
       const arrayBuffer = await file.arrayBuffer();
-      openBuffer(new Uint8Array(arrayBuffer), file.name);
+      const bytes = new Uint8Array(arrayBuffer);
+      if (/\.savc$/i.test(file.name) || (bytes[0] === 0xFF && bytes[1] === 0x03)) {
+        const save = await Savc.open(bytes);
+        openSavc(save, file.name);
+      } else {
+        openBuffer(bytes, file.name);
+      }
     } catch (error) {
-      showEmpty(`Could not open save: ${error.message}`, true);
+      if (state.buffer) window.alert(`Could not open save: ${error.message}`);
+      else showEmpty(`Could not open save: ${error.message}`, true);
     } finally {
       event.target.value = "";
+      ui.fileInput.disabled = false;
+      ui.closeButton.disabled = !state.buffer;
+      ui.downloadButton.disabled = !state.buffer;
+      ui.editor.inert = false;
+      ui.resourcesGrid.inert = false;
     }
   }
 
   function openBuffer(buffer, fileName) {
+    const profile = detectFormat(buffer, fileName);
+    state.savc = null;
     state.buffer = buffer;
     state.view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     state.fileName = fileName;
-    state.formatProfile = detectFormat(buffer, fileName);
+    state.formatProfile = profile;
     state.heroes = findHeroes();
     state.towns = findTowns();
     readPlayerRosters();
     applyHeroOwnership();
+    state.gates = findGates();
     state.resources = readResources();
     state.dirty = false;
     state.activeTab = "heroes";
@@ -273,20 +341,49 @@
     renderAll();
   }
 
+  function openSavc(save, fileName) {
+    state.savc = save;
+    state.buffer = save.payload;
+    state.view = new DataView(save.payload.buffer, save.payload.byteOffset, save.payload.byteLength);
+    state.fileName = fileName;
+    state.formatProfile = {
+      id: "savc",
+      label: `fheroes2 campaign (.savc, version ${save.version})`,
+      supports: { heroOwnership: false, heroOwnerFilter: true },
+      resources: null
+    };
+    state.heroes = save.heroes;
+    state.towns = [];
+    state.gates = [];
+    state.playerHeroRosters = [];
+    state.playerRosterBlocks = [];
+    state.resources = {};
+    state.dirty = false;
+    state.activeTab = "heroes";
+    state.selectedType = "heroes";
+    state.selectedIndex = state.heroes.length ? state.heroes[0].index : null;
+    setEnabled(true);
+    renderAll();
+  }
+
   function closeFile() {
     if (state.dirty && !window.confirm("Discard unsaved changes?")) return;
     state.buffer = null;
     state.view = null;
     state.fileName = "";
     state.formatProfile = null;
+    state.savc = null;
     state.dirty = false;
     state.heroes = [];
     state.towns = [];
+    state.gates = [];
     state.playerHeroRosters = [];
     state.playerRosterBlocks = [];
     state.resources = {};
     state.selectedIndex = null;
     setEnabled(false);
+    ui.resourcesGrid.closest("section").hidden = false;
+    ui.townsTab.disabled = false;
     ui.resourcesGrid.className = "resource-grid muted";
     ui.resourcesGrid.textContent = "Open a save to edit resources.";
     ui.recordList.innerHTML = "";
@@ -339,16 +436,25 @@
 
   function renderTabs() {
     const heroesActive = state.activeTab === "heroes";
+    const townsActive = state.activeTab === "towns";
+    const gatesActive = state.activeTab === "gates";
     updateFilterOptions();
     ui.heroesTab.classList.toggle("active", heroesActive);
-    ui.townsTab.classList.toggle("active", !heroesActive);
+    ui.townsTab.classList.toggle("active", townsActive);
+    ui.gatesTab.classList.toggle("active", gatesActive);
     ui.heroesTab.setAttribute("aria-selected", String(heroesActive));
-    ui.townsTab.setAttribute("aria-selected", String(!heroesActive));
-    ui.classFilter.disabled = !state.buffer;
-    ui.ownerFilter.disabled = !state.buffer || (heroesActive && (!state.formatProfile || !state.formatProfile.supports.heroOwnership));
+    ui.townsTab.setAttribute("aria-selected", String(townsActive));
+    ui.gatesTab.setAttribute("aria-selected", String(gatesActive));
+    ui.gatesTab.disabled = !state.buffer || !state.formatProfile.gateObjects;
+    ui.townsTab.disabled = Boolean(state.savc);
+    ui.filtersPanel.hidden = gatesActive;
+    ui.nameFilter.disabled = !state.buffer || gatesActive;
+    ui.classFilter.disabled = !state.buffer || gatesActive;
+    ui.ownerFilter.disabled = !state.buffer || gatesActive || (heroesActive && (!state.formatProfile || (!state.formatProfile.supports.heroOwnership && !state.formatProfile.supports.heroOwnerFilter)));
   }
 
   function updateFilterOptions() {
+    if (state.activeTab === "gates") return;
     const filters = activeFilters();
     if (state.activeTab === "towns") {
       setOptions(ui.classFilter, [{ value: "", label: "All town classes" }].concat(
@@ -374,6 +480,8 @@
   function renderResources() {
     if (!state.buffer) return;
     const resources = state.formatProfile.resources;
+    ui.resourcesGrid.closest("section").hidden = !resources;
+    if (!resources) return;
     ui.resourcesGrid.className = "resource-grid";
     ui.resourcesGrid.innerHTML = "";
     for (const name of resources.names) {
@@ -394,7 +502,9 @@
     if (!state.buffer) return;
     const records = filteredRecords();
     ui.recordList.innerHTML = "";
-    ui.recordCount.textContent = `${records.length} / ${state.activeTab === "heroes" ? state.heroes.length : state.towns.length} ${state.activeTab}`;
+    const collection = activeCollection();
+    const collectionLabel = state.activeTab === "gates" ? "gate colors" : state.activeTab;
+    ui.recordCount.textContent = `${records.length} / ${collection.length} ${collectionLabel}`;
     for (const record of records) {
       const button = document.createElement("button");
       button.type = "button";
@@ -407,15 +517,21 @@
       const name = document.createElement("div");
       name.className = "record-name";
       name.textContent = record.name || "(unnamed)";
-      const offset = document.createElement("div");
-      offset.className = "record-offset";
-      offset.textContent = hex(record.fileOffset, 4);
       const meta = document.createElement("div");
       meta.className = "record-meta";
-      meta.textContent = state.activeTab === "heroes"
+      meta.textContent = state.activeTab === "gates"
+        ? gateVisitSummary(record)
+        : state.activeTab === "heroes"
         ? `${heroClass(record.implicitClass)} | ${heroOwner(record)} | XP ${formatNumber(record.experience)}`
         : `${townFaction(record.factionId)} | ${townOwner(record)} | slot ${record.slotId}`;
-      button.append(name, offset, meta);
+      button.append(name);
+      if (state.activeTab !== "gates") {
+        const offset = document.createElement("div");
+        offset.className = "record-offset";
+        offset.textContent = hex(record.fileOffset, 4);
+        button.append(offset);
+      }
+      button.append(meta);
       ui.recordList.append(button);
     }
     if (records.length === 0) {
@@ -428,6 +544,7 @@
   }
 
   function filteredRecords() {
+    if (state.activeTab === "gates") return state.gates;
     const text = ui.nameFilter.value.trim().toLowerCase();
     const filters = activeFilters();
     if (state.activeTab === "towns") {
@@ -455,10 +572,12 @@
   }
 
   function setActiveTab(tab) {
+    if (tab === "towns" && state.savc) return;
+    if (tab === "gates" && (!state.formatProfile || !state.formatProfile.gateObjects)) return;
     syncFilterValues();
     state.activeTab = tab;
     state.selectedType = tab;
-    const collection = tab === "heroes" ? state.heroes : state.towns;
+    const collection = activeCollection();
     state.selectedIndex = collection.length ? collection[0].index : null;
     renderTabs();
     renderRecordList();
@@ -467,6 +586,11 @@
 
   function activeFilters() {
     return state.filters[state.activeTab] || state.filters.heroes;
+  }
+
+  function activeCollection() {
+    if (state.activeTab === "gates") return state.gates;
+    return state.activeTab === "heroes" ? state.heroes : state.towns;
   }
 
   function syncFilterValues() {
@@ -498,7 +622,10 @@
       showEmpty("Select a record to edit.");
       return;
     }
-    if (state.selectedType === "towns") {
+    if (state.selectedType === "gates") {
+      const gate = state.gates.find(item => item.index === state.selectedIndex);
+      gate ? renderGateEditor(gate) : showEmpty("Select a gate or tent to inspect.");
+    } else if (state.selectedType === "towns") {
       const town = state.towns.find(item => item.index === state.selectedIndex);
       town ? renderTownEditor(town) : showEmpty("Select a town to edit.");
     } else {
@@ -508,6 +635,10 @@
   }
 
   function renderHeroEditor(hero) {
+    if (state.savc) {
+      renderSavcHeroEditor(hero);
+      return;
+    }
     ui.editor.className = "editor";
     ui.editor.innerHTML = "";
     const layout = div("editor-layout");
@@ -610,6 +741,124 @@
     ui.editor.append(layout);
   }
 
+  function renderSavcHeroEditor(hero) {
+    ui.editor.className = "editor";
+    ui.editor.innerHTML = "";
+    const layout = div("editor-layout");
+    layout.append(div("editor-header", div("",
+      heading(hero.name || "(unnamed)", 2),
+      paragraph(`${heroClass(hero.implicitClass)} | ${heroOwner(hero)}`)
+    )));
+    layout.append(section("Identity", div("section-grid",
+      readonlyField("Name", hero.name),
+      readonlyField("Owner", heroOwner(hero)),
+      readonlyField("Class", heroClass(hero.implicitClass)),
+      readonlyField("Portrait ID", hero.portraitId),
+      readonlyField("Position", `${hero.positionX}, ${hero.positionY}`)
+    )));
+    const labels = {
+      attack: "Attack", defense: "Defense", knowledge: "Knowledge", spellPower: "Spell Power",
+      spellPoints: "Spell Points", movePoints: "Current Movement", experience: "Experience"
+    };
+    layout.append(section("Hero Stats", div("section-grid wide-grid",
+      ...Object.entries(hero.fields).map(([property, descriptor]) =>
+        numericField(labels[property], hero[property], 0, descriptor.max, value => {
+          Savc.writeValue(state.savc, descriptor.offset, value, descriptor.max);
+          hero[property] = value;
+          markDirty();
+          renderRecordList();
+        })
+      )
+    )));
+    const skills = hero.secondary.filter(skill => skill.id > 0 && skill.level > 0);
+    layout.append(section("Secondary Skills", div("section-grid wide-grid", ...SECONDARY_SKILLS.map((name, index) => {
+      const skill = skills.find(entry => entry.id === index + 1);
+      const control = selectField(name, String(skill ? skill.level : 0), secondarySkillLevelOptions(), value => {
+        editSavcCollection(() => Savc.setSecondarySkill(state.savc, hero.id, index + 1, Number(value)));
+      });
+      if (!skill && skills.length >= 8) {
+        control.querySelector("select").disabled = true;
+        control.title = "A hero can have at most eight secondary skills.";
+      }
+      return control;
+    }))));
+    const armyGrid = div("army-grid");
+    armyGrid.append(labelText("Slot"), labelText("Creature"), labelText("Count"));
+    const creatures = [{ value: "0", label: "(empty)" }].concat(
+      CREATURES.map((name, index) => ({ value: String(index + 1), label: `${index + 1}  ${name}` }))
+    );
+    const writeTroop = troop => {
+      Savc.writeValue(state.savc, troop.typeOffset, troop.type, 66);
+      Savc.writeValue(state.savc, troop.countOffset, troop.count);
+      markDirty();
+    };
+    hero.army.forEach((troop, slot) => {
+      armyGrid.append(div("slot-label", `#${slot + 1}`));
+      armyGrid.append(selectField("", String(troop.type), creatures, value => {
+        troop.type = Number(value);
+        troop.count = troop.type ? Math.max(1, troop.count) : 0;
+        writeTroop(troop);
+        renderSavcHeroEditor(hero);
+      }, true));
+      armyGrid.append(numericField("", troop.count, 0, 0xFFFFFFFF, value => {
+        troop.count = value;
+        if (!value) troop.type = 0;
+        writeTroop(troop);
+        renderSavcHeroEditor(hero);
+      }, true, troop.type === 0));
+    });
+    layout.append(section("Army", armyGrid));
+    const artifactGrid = div("artifact-grid");
+    const artifactChoices = [{ value: "0", label: "(empty)" }].concat(
+      ARTIFACTS.map((name, index) => ({ value: String(index + 1), label: `${index + 1}  ${name}` }))
+        .filter(option => Number(option.value) < 83 || Number(option.value) > 86)
+    );
+    for (let slot = 0; slot < 14; slot += 1) {
+      const artifact = hero.artifacts[slot] || { id: 0, metadata: 0 };
+      const choices = artifactChoices.slice();
+      if (!choices.some(option => Number(option.value) === artifact.id)) {
+        choices.push({ value: String(artifact.id), label: `${artifact.id}  Unknown (preserved)` });
+      }
+      const control = selectField(`Artifact #${slot + 1}`, String(artifact.id), choices, value => {
+        editSavcCollection(() => Savc.setArtifact(state.savc, hero.id, slot, Number(value)));
+      });
+      const hasOtherBook = hero.artifacts.some((entry, index) => index !== slot && entry.id === Savc.ARTIFACT.spellBook);
+      control.querySelector(`option[value="${Savc.ARTIFACT.spellBook}"]`).disabled = hasOtherBook;
+      const slotFields = div("artifact-slot", control);
+      if (artifact.id === Savc.ARTIFACT.spellScroll) {
+        const spells = SAVC_SPELLS.map((name, index) => ({ value: String(index + 1), label: name }));
+        if (!spells.some(spell => Number(spell.value) === artifact.metadata)) {
+          spells.push({ value: String(artifact.metadata), label: `Unknown #${artifact.metadata} (preserved)` });
+        }
+        slotFields.append(selectField(`Scroll Spell #${slot + 1}`, String(artifact.metadata), spells, value => {
+          editSavcCollection(() => Savc.setArtifact(state.savc, hero.id, slot, artifact.id, Number(value)));
+        }));
+      }
+      artifactGrid.append(slotFields);
+    }
+    layout.append(section("Artifacts", artifactGrid));
+    layout.append(section("Details", div("section-grid",
+      readonlyField("Format", state.formatProfile.label),
+      readonlyField("Map", state.savc.mapName),
+      readonlyField("Hero ID", hero.id)
+    )));
+    ui.editor.append(layout);
+  }
+
+  function editSavcCollection(edit) {
+    try {
+      edit();
+      state.buffer = state.savc.payload;
+      state.view = new DataView(state.buffer.buffer, state.buffer.byteOffset, state.buffer.byteLength);
+      state.heroes = state.savc.heroes;
+      markDirty();
+      renderRecordList();
+    } catch (error) {
+      window.alert(error.message);
+    }
+    renderSelectedEditor();
+  }
+
   function renderTownEditor(town) {
     ui.editor.className = "editor";
     ui.editor.innerHTML = "";
@@ -687,6 +936,131 @@
 
     layout.append(hexSection("Raw Bytes", state.buffer.slice(town.fileOffset, town.fileOffset + state.formatProfile.town.stride)));
     ui.editor.append(layout);
+  }
+
+  function renderGateEditor(gate) {
+    ui.editor.className = "editor";
+    ui.editor.innerHTML = "";
+    const layout = div("editor-layout");
+    const header = div("editor-header");
+    const titleBlock = document.createElement("div");
+    titleBlock.append(heading(gate.name, 2));
+    header.append(titleBlock);
+    layout.append(header);
+
+    const playerList = div("gate-player-list");
+    for (const player of state.playerRosterBlocks) {
+      const defeated = playerIsDefeated(player);
+      const masksAgree = player.tentVisitMasks.length === 2
+        && player.tentVisitMasks[0] === player.tentVisitMasks[1];
+      const row = document.createElement("label");
+      row.className = "gate-player-row";
+      row.classList.toggle("defeated", defeated);
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = masksAgree && playerHasVisitedGate(player, gate);
+      checkbox.indeterminate = !masksAgree;
+      checkbox.disabled = defeated || !masksAgree;
+      checkbox.addEventListener("change", () => setGateVisitState(gate, player, checkbox.checked));
+      const details = document.createElement("span");
+      details.className = "gate-player-details";
+      details.append(document.createElement("strong"), document.createElement("small"));
+      details.querySelector("strong").textContent = playerColor(player.playerId);
+      details.querySelector("small").textContent = defeated ? "Defeated" : playerAssetSummary(player);
+      row.append(checkbox, details);
+      playerList.append(row);
+    }
+    layout.append(section("Players", playerList));
+    ui.editor.append(layout);
+  }
+
+  function findGates() {
+    const gateObjects = state.formatProfile.gateObjects;
+    if (!gateObjects) return [];
+    const map = findGxcMap(gateObjects);
+    if (!map) return [];
+    const gatesByColor = new Map();
+    for (let tileIndex = 0; tileIndex < map.width * map.height; tileIndex += 1) {
+      const fileOffset = map.offset + tileIndex * gateObjects.tileStride;
+      const objectSheet = state.buffer[fileOffset + gateObjects.objectSheet];
+      const sprite = state.buffer[fileOffset + gateObjects.sprite];
+      const objectType = state.buffer[fileOffset + gateObjects.objectType];
+      const isBarrier = objectSheet === gateObjects.barrierSheet
+        && gateObjects.barrierSprites.includes(sprite)
+        && objectType === gateObjects.barrierType;
+      const isTent = objectSheet === gateObjects.tentSheet
+        && gateObjects.tentSprites.includes(sprite)
+        && (objectType === gateObjects.tentType || objectType === gateObjects.heroType);
+      const kind = isBarrier ? "Barrier" : isTent ? "Traveller's Tent" : "";
+      if (!kind) continue;
+      const spriteList = isBarrier ? gateObjects.barrierSprites : gateObjects.tentSprites;
+      const colorIndex = spriteList.indexOf(sprite) + 1;
+      if (colorIndex === 0) continue;
+      const color = gateObjects.colors[colorIndex];
+      let gate = gatesByColor.get(color);
+      if (!gate) {
+        gate = { index: gatesByColor.size, name: `${color} Gate Access`, color, colorIndex, barrierCount: 0, tentCount: 0 };
+        gatesByColor.set(color, gate);
+      }
+      if (isBarrier) gate.barrierCount += 1;
+      if (isTent) gate.tentCount += 1;
+    }
+    return Array.from(gatesByColor.values());
+  }
+
+  function playerHasVisitedGate(player, gate) {
+    const colorMask = 1 << (gate.colorIndex - 1);
+    return player.tentVisitMasks.length === 2
+      && player.tentVisitMasks[0] === player.tentVisitMasks[1]
+      && (player.tentVisitMasks[0] & colorMask) !== 0;
+  }
+
+  function playerIsDefeated(player) {
+    return player.heroIndexes.length === 0
+      && !state.towns.some(town => town.ownerPlayerId === player.playerId);
+  }
+
+  function playerAssetSummary(player) {
+    const townCount = state.towns.filter(town => town.ownerPlayerId === player.playerId).length;
+    const heroLabel = `${player.heroIndexes.length} ${player.heroIndexes.length === 1 ? "hero" : "heroes"}`;
+    const townLabel = `${townCount} ${townCount === 1 ? "town" : "towns"}`;
+    return `${heroLabel}, ${townLabel}`;
+  }
+
+  function gateVisitSummary(gate) {
+    const players = state.playerRosterBlocks.filter(player => !playerIsDefeated(player));
+    const visited = players.filter(player => playerHasVisitedGate(player, gate)).length;
+    return `${visited} of ${players.length} players visited`;
+  }
+
+  function setGateVisitState(gate, player, visited) {
+    const playerRosters = state.formatProfile.playerRosters;
+    if (!player || !playerRosters || playerIsDefeated(player) || player.tentVisitMasks.length !== 2) return;
+    const colorMask = 1 << (gate.colorIndex - 1);
+    for (let index = 0; index < playerRosters.tentVisitMasks.length; index += 1) {
+      const maskOffset = playerRosters.tentVisitMasks[index];
+      const value = visited
+        ? player.tentVisitMasks[index] | colorMask
+        : player.tentVisitMasks[index] & ~colorMask;
+      player.tentVisitMasks[index] = value;
+      state.buffer[player.offset + maskOffset] = value;
+    }
+    markDirty();
+    renderRecordList();
+    renderGateEditor(gate);
+  }
+
+  function findGxcMap(gateObjects) {
+    for (let offset = 0; offset <= state.buffer.length - gateObjects.markerSize; offset += 1) {
+      if (readU32(offset) !== gateObjects.marker) continue;
+      const width = readU32(offset + 4);
+      const height = readU32(offset + 8);
+      const mapEnd = offset + gateObjects.markerSize + width * height * gateObjects.tileStride;
+      if (width === height && gateObjects.validDimensions.includes(width) && mapEnd <= state.buffer.length) {
+        return { offset: offset + gateObjects.markerSize, width, height };
+      }
+    }
+    return null;
   }
 
   function findHeroes() {
@@ -1009,7 +1383,8 @@
           isSelected: currentHero === heroIndex
         });
       }
-      state.playerRosterBlocks.push({ playerId, offset, currentHero, heroIndexes, hadHeroes: heroIndexes.length > 0 });
+      const tentVisitMasks = (playerRosters.tentVisitMasks || []).map(maskOffset => state.buffer[offset + maskOffset]);
+      state.playerRosterBlocks.push({ playerId, offset, currentHero, heroIndexes, tentVisitMasks, hadHeroes: heroIndexes.length > 0 });
     }
   }
 
@@ -1183,18 +1558,31 @@
     }
   }
 
-  function downloadEditedSave() {
+  async function downloadEditedSave() {
     if (!state.buffer) return;
-    const blob = new Blob([state.buffer], { type: "application/octet-stream" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = editedFileName(state.fileName || "save.GXC");
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    state.dirty = false;
-    updateFileStatus();
+    const buffer = state.buffer;
+    const fileName = state.fileName;
+    const revision = state.revision;
+    ui.downloadButton.disabled = true;
+    try {
+      const bytes = state.savc
+        ? await Savc.pack({ prefix: state.savc.prefix, payload: buffer.slice() })
+        : buffer;
+      const blob = new Blob([bytes], { type: "application/octet-stream" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = editedFileName(fileName || "save.GXC");
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      if (state.buffer === buffer && state.revision === revision) state.dirty = false;
+      updateFileStatus();
+    } catch (error) {
+      window.alert(`Could not export save: ${error.message}`);
+    } finally {
+      ui.downloadButton.disabled = !state.buffer;
+    }
   }
 
   function editedFileName(name) {
@@ -1204,6 +1592,7 @@
 
   function markDirty() {
     state.dirty = true;
+    state.revision += 1;
     updateFileStatus();
   }
 
