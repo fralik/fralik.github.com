@@ -81,7 +81,7 @@ Per hero:
 
 Per town:
 
-- Building flags, including castle creation with its adventure-map exterior, faction-specific dwellings, turrets, Marketplace, moat, Captain's Quarters, and special buildings
+- Building flags, including faction-specific dwellings, turrets, Marketplace, moat, Captain's Quarters, and special buildings; `.GMC` castle toggles also update the adventure-map exterior
 - Faction info building and Tavern flags
 - Mage Guild level
 - Dwelling creature stock
@@ -110,7 +110,8 @@ padded with NULs, portrait ID < 128, and sentinel `0xFEFF` or `0xFFFF` at `+0x1F
 Hero class is derived from the record's fixed table slot; byte `+0x33` stores hero level.
 
 Town tables are also profile-based. `.GXC` town editing remains anchored at `0x3CFB`.
-`.GMC` town records are currently identified from `0x3AFA` for display and raw-byte inspection.
+`.GMC` town records are identified from `0x3AFA`; mapped building flags, Mage Guild
+level, dwelling stock, and castle exterior sprites are editable.
 
 ## Safety
 
