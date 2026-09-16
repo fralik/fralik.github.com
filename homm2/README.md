@@ -5,7 +5,7 @@ It runs entirely in the browser: no .NET SDK, build step, server, or install is 
 
 ## Run
 
-Open [web/index.html](web/index.html) directly in a modern browser, then choose a `.GXC`
+Open [index.html](index.html) directly in a modern browser, then choose a `.GXC`
 or `.GMC` save file with **Open save file**.
 
 The app edits the loaded save in browser memory. Use **Download Edited Save File** to export
