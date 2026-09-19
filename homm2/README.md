@@ -15,7 +15,7 @@ the modified file, which is named like `SAVE.edited.GXC`, `SAVE.edited.GMC`, or 
 
 - `.GXC` Gold/expansion saves: hero, resources, roster ownership, visibility reveal, verified town editing, and barrier/Traveller's Tent discovery.
 - `.GMC` standard campaign saves: detected as the original 54-hero format with a different hero table and resource offset. Hero fields, roster ownership, map visibility reveal, player resources, and mapped town fields are editable.
-- `.savc` fheroes2 campaign saves: initial hero-editing support for save-format versions `10025` through `10034`. Requires a browser with `CompressionStream` and `DecompressionStream` support.
+- `.savc` fheroes2 campaign saves: hero and town editing for save-format versions `10025` through `10034`. Requires a browser with `CompressionStream` and `DecompressionStream` support.
 
 ### fheroes2 Campaign Saves
 
@@ -28,18 +28,37 @@ Editable fields:
 
 - Attack, Defense, Knowledge, and Spell Power
 - Experience (fheroes2 derives the hero's level from experience)
-- Spell points and current movement points
+- Spell points and current movement points, with a **Refill current day** action
 - Creature types and 32-bit counts in all five army slots
 - All 14 secondary-skill choices, with None/Basic/Advanced/Expert levels; add or remove
 	skills within fheroes2's limit of eight active skills per hero
 - All 14 artifact slots, including empty slots and spell selection for spell scrolls;
 	editor-only artifact placeholders are excluded and duplicate spell books are prevented
+- Wood, Mercury, Ore, Sulfur, Crystal, Gems, and Gold for each active player
+- Faction-valid town and castle buildings, Mage Guild level, and all six 32-bit dwelling populations
+- Reveal the buried artifact's puzzle map for a selected active player
 
-Names, portraits, ownership, learned spells, resources, towns, visibility, gates,
+In **Hero Stats**, **Refill current day** restores the selected hero's movement using
+fheroes2's daily maximum calculation: current army speed, Logistics or Navigation,
+movement artifacts, visited Stables, and owned lighthouses. Duplicate movement artifacts
+count only once per artifact type. The action changes only current movement; it does not
+advance the day, restore spell points, or reset visits. Manual movement editing remains available.
+
+In the **Buried Artifact** panel, select your player color and choose **Reveal Puzzle Map**.
+Download the edited save, load it in fheroes2, and open the Puzzle Map to see the digging
+location. This reveals all 48 puzzle pieces for that player only. It does not move or
+award the artifact, mark it as found, reveal adventure-map fog, or change obelisk visits.
+It cannot create a missing buried artifact or restore one that has already been dug up.
+
+Hero and town names, portraits, ownership, learned spells, visibility, gates,
 and campaign progress are preserved but are not editable for `.savc` yet.
 Unsupported controls are omitted or read-only. Adding or removing secondary skills
 resizes their serialized list and updates the offsets of later records. Untouched
 artifact entries retain their metadata; replacing a scroll clears its old spell data.
+Town dwelling upgrades are limited to the selected faction and retain their required
+base dwelling. Castle/Tent, Shipyard, and Captain state are read-only because changing
+them safely requires adventure-map, terrain, or serialized captain data. Necromancer
+Tavern/Shrine availability follows the map game version.
 All payload bytes outside the edited fields/lists and the original save header are preserved;
 compressed bytes can differ after export. Unsupported versions and malformed headers
 or compressed data are rejected. For an older save, open and re-save it in a supported
@@ -49,8 +68,17 @@ The layout is based on the [fheroes2 serialization source](https://github.com/ih
 including `game_io.cpp`, `heroes.cpp`, and `save_format_version.h`. Automated tests use
 synthetic binary fixtures and verify decompressed byte preservation with independent
 Node.js zlib checks, including repeated ID-zero placeholders for unused heroes.
+Puzzle-map tests cover all supported versions and verify that only the selected player's
+48 visibility bytes change, including after variable-length hero edits.
+Movement tests cover land/sea bonuses and verify that refilling changes only the selected
+hero's movement field across all supported versions, including after skill/artifact edits.
+Town tests cover every supported version, faction-specific upgrades and dependencies,
+Tavern/Shrine rules, and exact-byte preservation outside the selected building and
+dwelling-population fields. Rejected building masks do not mutate the payload.
+Resource tests cover all supported versions, collection-resized offsets, per-player
+selection, and exact-byte preservation outside the selected 32-bit resource field.
 Real version `10032` Succession Wars campaign saves have also been checked for browser
-loading, skill addition/removal, artifact editing, and byte-preserving edit/export/reopen.
+loading, skill addition/removal, artifact and town editing, and edit/export/reopen.
 Loading an edited real campaign save
 in fheroes2 itself has not yet been verified; keep a backup.
 

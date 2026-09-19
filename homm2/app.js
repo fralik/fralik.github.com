@@ -110,6 +110,28 @@
     buildingBits: [0, 1, 2, 3, 4, 5, 6, 7, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
   };
 
+  const SAVC_TOWN = {
+    castle: 0x00000800,
+    thievesGuild: 0x00000001,
+    tavern: 0x00000002,
+    mageGuild: 0x0007C000,
+    baseDwellings: 0x03F00000,
+    upgrades: 0xFC000000,
+    commonBuildings: [
+      { mask: 0x00000004, label: "Shipyard", readOnly: true, reason: "Shipyard availability depends on adjacent water tiles." },
+      { mask: 0x00000008, bit: 6 },
+      { mask: 0x00000010, label: "Statue" },
+      { mask: 0x00000020, bit: 0 },
+      { mask: 0x00000040, bit: 1 },
+      { mask: 0x00000080, bit: 2 },
+      { mask: 0x00000100, bit: 3 },
+      { mask: 0x00000200, bit: 4 },
+      { mask: 0x00000400, bit: 5 },
+      { mask: 0x00001000, bit: 7, readOnly: true, reason: "Captain state includes serialized captain data." },
+      { mask: 0x00080000, label: "Town construction tent", readOnly: true, reason: "Castle and Tent state changes require adventure-map updates." }
+    ]
+  };
+
   const RESOURCES = {
     offset: 0x03A4,
     names: ["Wood", "Mercury", "Ore", "Sulfur", "Crystal", "Gems", "Gold"]
@@ -247,7 +269,13 @@
     fileStatus: document.getElementById("fileStatus"),
     downloadButton: document.getElementById("downloadButton"),
     closeButton: document.getElementById("closeButton"),
+    resourcePlayerField: document.getElementById("resourcePlayerField"),
+    resourcePlayer: document.getElementById("resourcePlayer"),
     resourcesGrid: document.getElementById("resourcesGrid"),
+    puzzlePanel: document.getElementById("puzzlePanel"),
+    puzzlePlayer: document.getElementById("puzzlePlayer"),
+    puzzleStatus: document.getElementById("puzzleStatus"),
+    revealPuzzleButton: document.getElementById("revealPuzzleButton"),
     filtersPanel: document.getElementById("filtersPanel"),
     nameFilter: document.getElementById("nameFilter"),
     classFilter: document.getElementById("classFilter"),
@@ -267,6 +295,17 @@
     ui.fileInput.addEventListener("change", handleFileOpen);
     ui.downloadButton.addEventListener("click", downloadEditedSave);
     ui.closeButton.addEventListener("click", closeFile);
+    ui.resourcePlayer.addEventListener("change", renderResources);
+    ui.puzzlePlayer.addEventListener("change", renderPuzzlePanel);
+    ui.revealPuzzleButton.addEventListener("click", () => {
+      try {
+        Savc.revealPuzzle(state.savc, Number(ui.puzzlePlayer.value));
+        markDirty();
+        renderPuzzlePanel();
+      } catch (error) {
+        window.alert(error.message);
+      }
+    });
     ui.nameFilter.addEventListener("input", renderRecordList);
     ui.classFilter.addEventListener("change", () => {
       activeFilters().classValue = ui.classFilter.value;
@@ -297,6 +336,7 @@
     ui.downloadButton.disabled = true;
     ui.editor.inert = true;
     ui.resourcesGrid.inert = true;
+    ui.puzzlePanel.inert = true;
     try {
       const arrayBuffer = await file.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
@@ -316,6 +356,7 @@
       ui.downloadButton.disabled = !state.buffer;
       ui.editor.inert = false;
       ui.resourcesGrid.inert = false;
+      ui.puzzlePanel.inert = false;
     }
   }
 
@@ -343,20 +384,23 @@
 
   function openSavc(save, fileName) {
     state.savc = save;
+    ui.puzzlePlayer.value = "";
     state.buffer = save.payload;
     state.view = new DataView(save.payload.buffer, save.payload.byteOffset, save.payload.byteLength);
     state.fileName = fileName;
     state.formatProfile = {
       id: "savc",
       label: `fheroes2 campaign (.savc, version ${save.version})`,
-      supports: { heroOwnership: false, heroOwnerFilter: true },
-      resources: null
+      town: {},
+      supports: { heroOwnership: false, heroOwnerFilter: true, townBuildings: true, dwellingStock: true },
+      resources: { names: Savc.RESOURCE_NAMES, savc: true }
     };
     state.heroes = save.heroes;
-    state.towns = [];
+    state.towns = save.towns.map(town => prepareSavcTown(town));
     state.gates = [];
     state.playerHeroRosters = [];
     state.playerRosterBlocks = [];
+    ui.resourcePlayer.value = "";
     state.resources = {};
     state.dirty = false;
     state.activeTab = "heroes";
@@ -382,6 +426,8 @@
     state.resources = {};
     state.selectedIndex = null;
     setEnabled(false);
+    renderPuzzlePanel();
+    ui.resourcePlayerField.hidden = true;
     ui.resourcesGrid.closest("section").hidden = false;
     ui.townsTab.disabled = false;
     ui.resourcesGrid.className = "resource-grid muted";
@@ -429,9 +475,25 @@
   function renderAll() {
     renderTabs();
     renderResources();
+    renderPuzzlePanel();
     renderRecordList();
     renderSelectedEditor();
     updateFileStatus();
+  }
+
+  function renderPuzzlePanel() {
+    ui.puzzlePanel.hidden = !state.savc;
+    if (!state.savc) return;
+    const selected = ui.puzzlePlayer.value;
+    const kingdoms = state.savc.kingdoms.filter(kingdom => kingdom.active);
+    setOptions(ui.puzzlePlayer, kingdoms.map(kingdom => ({
+      value: String(kingdom.color), label: playerColor(Math.log2(kingdom.color))
+    })));
+    if (kingdoms.some(kingdom => String(kingdom.color) === selected)) ui.puzzlePlayer.value = selected;
+    const kingdom = kingdoms.find(record => record.color === Number(ui.puzzlePlayer.value));
+    ui.puzzlePlayer.disabled = !kingdom;
+    ui.revealPuzzleButton.disabled = !kingdom || kingdom.puzzle.revealed;
+    ui.puzzleStatus.textContent = !kingdom ? "No active players" : kingdom.puzzle.revealed ? "Puzzle map fully revealed" : "Puzzle map not fully revealed";
   }
 
   function renderTabs() {
@@ -446,7 +508,7 @@
     ui.townsTab.setAttribute("aria-selected", String(townsActive));
     ui.gatesTab.setAttribute("aria-selected", String(gatesActive));
     ui.gatesTab.disabled = !state.buffer || !state.formatProfile.gateObjects;
-    ui.townsTab.disabled = Boolean(state.savc);
+    ui.townsTab.disabled = false;
     ui.filtersPanel.hidden = gatesActive;
     ui.nameFilter.disabled = !state.buffer || gatesActive;
     ui.classFilter.disabled = !state.buffer || gatesActive;
@@ -482,15 +544,37 @@
     const resources = state.formatProfile.resources;
     ui.resourcesGrid.closest("section").hidden = !resources;
     if (!resources) return;
+    ui.resourcePlayerField.hidden = !resources.savc;
     ui.resourcesGrid.className = "resource-grid";
     ui.resourcesGrid.innerHTML = "";
+    let values = state.resources;
+    let writeResource = (name, value) => {
+      state.resources[name] = value;
+      writeResources();
+    };
+    if (resources.savc) {
+      const selected = ui.resourcePlayer.value;
+      const kingdoms = state.savc.kingdoms.filter(kingdom => kingdom.active);
+      setOptions(ui.resourcePlayer, kingdoms.map(kingdom => ({
+        value: String(kingdom.color), label: playerColor(Math.log2(kingdom.color))
+      })));
+      if (kingdoms.some(kingdom => String(kingdom.color) === selected)) ui.resourcePlayer.value = selected;
+      const kingdom = kingdoms.find(record => record.color === Number(ui.resourcePlayer.value));
+      ui.resourcePlayer.disabled = !kingdom;
+      if (!kingdom) {
+        ui.resourcesGrid.className = "resource-grid muted";
+        ui.resourcesGrid.textContent = "No active players.";
+        return;
+      }
+      values = kingdom.resources;
+      writeResource = (name, value) => Savc.setKingdomResource(state.savc, kingdom.color, name, value);
+    }
     for (const name of resources.names) {
       const label = document.createElement("label");
       label.className = "resource-field";
       label.append(span(name));
-      const input = numberInput(0, 0xFFFFFFFF, state.resources[name], value => {
-        state.resources[name] = value;
-        writeResources();
+      const input = numberInput(0, 0xFFFFFFFF, values[name], value => {
+        writeResource(name, value);
         markDirty();
       });
       label.append(input);
@@ -572,7 +656,6 @@
   }
 
   function setActiveTab(tab) {
-    if (tab === "towns" && state.savc) return;
     if (tab === "gates" && (!state.formatProfile || !state.formatProfile.gateObjects)) return;
     syncFilterValues();
     state.activeTab = tab;
@@ -768,7 +851,13 @@
           markDirty();
           renderRecordList();
         })
-      )
+      ),
+      actionField("Movement", "Refill current day", () => {
+        Savc.refillMovement(state.savc, hero.id);
+        markDirty();
+        renderSavcHeroEditor(hero);
+        renderRecordList();
+      })
     )));
     const skills = hero.secondary.filter(skill => skill.id > 0 && skill.level > 0);
     layout.append(section("Secondary Skills", div("section-grid wide-grid", ...SECONDARY_SKILLS.map((name, index) => {
@@ -852,6 +941,7 @@
       state.view = new DataView(state.buffer.buffer, state.buffer.byteOffset, state.buffer.byteLength);
       state.heroes = state.savc.heroes;
       markDirty();
+      renderPuzzlePanel();
       renderRecordList();
     } catch (error) {
       window.alert(error.message);
@@ -890,35 +980,61 @@
       writeTown(town);
       markDirty();
       renderTownEditor(town);
-    }));
+    }, town.isSavc, town.isSavc ? "Castle and Tent state changes require adventure-map updates." : ""));
     buildingGrid.append(checkField("Faction info building", town.hasThievesGuild, checked => {
-      town.buildFlagsPrefix = setBit(town.buildFlagsPrefix, 1, checked);
-      writeTown(town);
-      markDirty();
-      renderTownEditor(town);
-    }));
-    buildingGrid.append(checkField("Tavern", town.hasTavern, checked => {
-      town.buildFlagsPrefix = setBit(town.buildFlagsPrefix, 2, checked);
-      writeTown(town);
-      markDirty();
-      renderTownEditor(town);
-    }));
-    buildingGrid.append(numericField("Mage Guild Level", town.mageGuildLevel, 0, 5, value => {
-      town.mageGuildLevel = value;
-      town.buildFlags = ((town.buildFlags & 0x00FFFFFF) | ((value & 0xFF) << 24)) >>> 0;
-      writeTown(town);
-      markDirty();
-      renderTownEditor(town);
-    }));
-    for (const bit of TOWN.buildingBits) {
-      const mask = 1 << bit;
-      buildingGrid.append(checkField(townBuildingName(bit, town.factionId), (town.buildFlags & mask) !== 0, checked => {
-        town.buildFlags = checked ? (town.buildFlags | mask) >>> 0 : (town.buildFlags & ~mask) >>> 0;
-        town.mageGuildLevel = town.buildFlags >>> 24;
+      if (town.isSavc) editSavcTownBuildings(town, setMask(town.buildFlags, SAVC_TOWN.thievesGuild, checked));
+      else {
+        town.buildFlagsPrefix = setBit(town.buildFlagsPrefix, 1, checked);
         writeTown(town);
         markDirty();
         renderTownEditor(town);
-      }));
+      }
+    }, town.isSavc && !town.hasCastle, town.isSavc && !town.hasCastle ? "Buildings cannot be changed until the town has a Castle." : ""));
+    const savcRules = town.isSavc ? Savc.getTownBuildingRules(state.savc, town) : null;
+    if (!town.isSavc || savcRules.tavern) {
+      buildingGrid.append(checkField("Tavern", town.hasTavern, checked => {
+        if (town.isSavc) editSavcTownBuildings(town, setMask(town.buildFlags, SAVC_TOWN.tavern, checked));
+        else {
+          town.buildFlagsPrefix = setBit(town.buildFlagsPrefix, 2, checked);
+          writeTown(town);
+          markDirty();
+          renderTownEditor(town);
+        }
+      }, town.isSavc && !town.hasCastle, town.isSavc && !town.hasCastle ? "Buildings cannot be changed until the town has a Castle." : ""));
+    }
+    const mageGuildField = numericField("Mage Guild Level", town.mageGuildLevel, 0, 5, value => {
+      town.mageGuildLevel = value;
+      if (town.isSavc) {
+        const mageGuild = value === 0 ? 0 : ((1 << value) - 1) << 14;
+        editSavcTownBuildings(town, ((town.buildFlags & ~SAVC_TOWN.mageGuild) | mageGuild) >>> 0);
+      } else {
+        town.buildFlags = ((town.buildFlags & 0x00FFFFFF) | ((value & 0xFF) << 24)) >>> 0;
+        writeTown(town);
+        markDirty();
+        renderTownEditor(town);
+      }
+    });
+    if (town.isSavc && !town.hasCastle) {
+      mageGuildField.querySelector("input").disabled = true;
+      mageGuildField.title = "Buildings cannot be changed until the town has a Castle.";
+    }
+    buildingGrid.append(mageGuildField);
+    const buildingOptions = town.isSavc
+      ? savcTownBuildingOptions(town, savcRules)
+      : TOWN.buildingBits.map(bit => ({ mask: 1 << bit, bit }));
+    for (const option of buildingOptions) {
+      const label = option.label || townBuildingName(option.bit, town.factionId);
+      const disabled = option.readOnly || (town.isSavc && !town.hasCastle);
+      buildingGrid.append(checkField(label, (town.buildFlags & option.mask) !== 0, checked => {
+        if (town.isSavc) editSavcTownBuildings(town, updateSavcDwellingDependency(town.buildFlags, option, checked));
+        else {
+          town.buildFlags = setMask(town.buildFlags, option.mask, checked);
+          town.mageGuildLevel = town.buildFlags >>> 24;
+          writeTown(town);
+          markDirty();
+          renderTownEditor(town);
+        }
+      }, disabled, disabled ? option.reason || "Buildings cannot be changed until the town has a Castle." : ""));
     }
     const buildSection = section("Buildings", buildingGrid);
     buildSection.append(div("raw-line", formatTownBuildFlags(town)));
@@ -926,15 +1042,16 @@
 
     const stockGrid = div("stock-grid");
     for (let slot = 0; slot < 6; slot += 1) {
-      stockGrid.append(stockField(townDwellingStockName(town.factionId, slot, town.buildFlags), getAvailableDwellingStock(town, slot), value => {
+      stockGrid.append(stockField(townDwellingStockName(town.factionId, slot, town.buildFlags, town.isSavc), getAvailableDwellingStock(town, slot), value => {
         setAvailableDwellingStock(town, slot, value);
         writeTown(town);
         markDirty();
-      }));
+      }, town.isSavc ? 0xFFFFFFFF : 0xFFFF));
     }
     layout.append(section("Dwelling Stock", stockGrid));
 
-    layout.append(hexSection("Raw Bytes", state.buffer.slice(town.fileOffset, town.fileOffset + state.formatProfile.town.stride)));
+    const byteLength = town.byteLength || state.formatProfile.town.stride;
+    layout.append(hexSection("Raw Bytes", state.buffer.slice(town.fileOffset, town.fileOffset + byteLength)));
     ui.editor.append(layout);
   }
 
@@ -1285,6 +1402,15 @@
   }
 
   function writeTown(town) {
+    if (town.isSavc) {
+      Savc.setTownBuildings(state.savc, town.index, town.buildFlags);
+      town.dwellingStock.forEach((count, slot) => Savc.setTownDwelling(state.savc, town.index, slot, count));
+      town.hasThievesGuild = (town.buildFlags & SAVC_TOWN.thievesGuild) !== 0;
+      town.hasTavern = (town.buildFlags & SAVC_TOWN.tavern) !== 0;
+      town.hasCastle = (town.buildFlags & SAVC_TOWN.castle) !== 0;
+      town.mageGuildLevel = savcMageGuildLevel(town.buildFlags);
+      return;
+    }
     const offset = town.fileOffset;
     const mageGuildPrefixBit = state.formatProfile.town && state.formatProfile.town.mageGuildPrefixBit;
     if (mageGuildPrefixBit != null) {
@@ -1302,6 +1428,11 @@
   }
 
   function setTownCastle(town, enabled) {
+    if (town.isSavc) {
+      town.buildFlags = setMask(town.buildFlags, SAVC_TOWN.castle, enabled);
+      town.hasCastle = enabled;
+      return;
+    }
     town.buildFlagsPrefix = enabled
       ? (town.buildFlagsPrefix | TOWN.castleFlag) & ~TOWN.castleAbsentFlag
       : (town.buildFlagsPrefix | TOWN.castleAbsentFlag) & ~TOWN.castleFlag;
@@ -1736,8 +1867,8 @@
     return names[factionId] && names[factionId][bit];
   }
 
-  function townDwellingStockName(factionId, slotIndex, buildFlags) {
-    const upgraded = slotIndex > 0 && (buildFlags & (1 << (16 + slotIndex))) !== 0;
+  function townDwellingStockName(factionId, slotIndex, buildFlags, isSavc = false) {
+    const upgraded = isDwellingUpgraded({ buildFlags, isSavc }, slotIndex);
     const bit = slotIndex === 0 ? 11 : upgraded ? 16 + slotIndex : 11 + slotIndex;
     const buildingName = townBuildingName(bit, factionId);
     const creatureName = townDwellingCreatureName(factionId, slotIndex, upgraded);
@@ -1758,20 +1889,27 @@
   }
 
   function getAvailableDwellingStock(town, slotIndex) {
+    if (town.isSavc) return town.dwellingStock[slotIndex] || 0;
     if (slotIndex <= 0) return town.dwellingStock[slotIndex] || 0;
     return isDwellingUpgraded(town, slotIndex) ? town.upgradedDwellingStock[slotIndex - 1] || 0 : town.dwellingStock[slotIndex] || 0;
   }
 
   function setAvailableDwellingStock(town, slotIndex, value) {
+    if (town.isSavc) {
+      town.dwellingStock[slotIndex] = value;
+      return;
+    }
     if (slotIndex <= 0 || !isDwellingUpgraded(town, slotIndex)) town.dwellingStock[slotIndex] = value;
     else town.upgradedDwellingStock[slotIndex - 1] = value;
   }
 
   function isDwellingUpgraded(town, slotIndex) {
+    if (town.isSavc) return slotIndex > 0 && slotIndex < 6 && (town.buildFlags & (0x04000000 << (slotIndex - 1))) !== 0;
     return slotIndex > 0 && slotIndex < 6 && (town.buildFlags & (1 << (16 + slotIndex))) !== 0;
   }
 
   function formatTownBuildFlags(town) {
+    if (town.isSavc) return `Constructed buildings: ${hex(town.buildFlags, 8)}`;
     const combined = (BigInt(town.buildFlags) << 8n) | BigInt(town.buildFlagsPrefix);
     return `Raw value: prefix ${hex(town.buildFlagsPrefix, 2)}, +0x00 u32 ${hex(town.buildFlags, 8)}, combined 0x${combined.toString(16).toUpperCase().padStart(10, "0")}`;
   }
@@ -1779,6 +1917,74 @@
   function setBit(value, bit, enabled) {
     const mask = 1 << bit;
     return enabled ? (value | mask) : (value & ~mask);
+  }
+
+  function setMask(value, mask, enabled) {
+    return (enabled ? value | mask : value & ~mask) >>> 0;
+  }
+
+  function savcTownBuildingOptions(town, rules) {
+    const options = SAVC_TOWN.commonBuildings.slice();
+    if (rules.shrine) options.push({ mask: 0x00002000, label: "Shrine" });
+    for (let level = 1; level <= 6; level += 1) {
+      options.push({ mask: 0x00100000 << (level - 1), bit: 10 + level, dwellingLevel: level });
+    }
+    for (let level = 2; level <= 6; level += 1) {
+      const mask = (0x04000000 << (level - 2)) >>> 0;
+      if ((rules.allowedUpgrades & mask) !== 0) options.push({ mask, bit: 15 + level, upgradeLevel: level });
+    }
+    if ((rules.allowedUpgrades & 0x80000000) !== 0) {
+      options.push({ mask: 0x80000000, label: town.factionId === 3 ? "Black Tower" : "Second Upgrade Dwelling 6", upgradeLevel: 7 });
+    }
+    return options;
+  }
+
+  function updateSavcDwellingDependency(buildFlags, option, enabled) {
+    let next = setMask(buildFlags, option.mask, enabled);
+    if (option.dwellingLevel && !enabled && option.dwellingLevel > 1) {
+      next = setMask(next, 0x04000000 << (option.dwellingLevel - 2), false);
+      if (option.dwellingLevel === 6) next = setMask(next, 0x80000000, false);
+    }
+    if (option.upgradeLevel && enabled) {
+      const dwellingLevel = Math.min(option.upgradeLevel, 6);
+      next = setMask(next, 0x00100000 << (dwellingLevel - 1), true);
+      if (option.upgradeLevel === 7) next = setMask(next, 0x40000000, true);
+    }
+    if (option.upgradeLevel === 6 && !enabled) next = setMask(next, 0x80000000, false);
+    return next;
+  }
+
+  function editSavcTownBuildings(town, buildFlags) {
+    try {
+      Savc.setTownBuildings(state.savc, town.index, buildFlags);
+      town.buildFlags = buildFlags >>> 0;
+      town.hasThievesGuild = (town.buildFlags & SAVC_TOWN.thievesGuild) !== 0;
+      town.hasTavern = (town.buildFlags & SAVC_TOWN.tavern) !== 0;
+      town.mageGuildLevel = savcMageGuildLevel(town.buildFlags);
+      markDirty();
+    } catch (error) {
+      window.alert(error.message);
+    }
+    renderTownEditor(town);
+  }
+
+  function savcMageGuildLevel(buildFlags) {
+    for (let level = 5; level > 0; level -= 1) {
+      if ((buildFlags & (0x00004000 << (level - 1))) !== 0) return level;
+    }
+    return 0;
+  }
+
+  function prepareSavcTown(town) {
+    town.isSavc = true;
+    town.slotId = town.index;
+    town.buildFlagsPrefix = 0;
+    town.upgradedDwellingStock = [];
+    town.hasThievesGuild = (town.buildFlags & SAVC_TOWN.thievesGuild) !== 0;
+    town.hasTavern = (town.buildFlags & SAVC_TOWN.tavern) !== 0;
+    town.hasCastle = (town.buildFlags & SAVC_TOWN.castle) !== 0;
+    town.mageGuildLevel = savcMageGuildLevel(town.buildFlags);
+    return town;
   }
 
   function section(title, content) {
@@ -1848,12 +2054,15 @@
     return field(label, output);
   }
 
-  function checkField(label, checked, onChange) {
+  function checkField(label, checked, onChange, disabled = false, title = "") {
     const wrapper = document.createElement("label");
     wrapper.className = "checkbox-label";
+    wrapper.classList.toggle("disabled", disabled);
+    wrapper.title = title;
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = checked;
+    input.disabled = disabled;
     input.addEventListener("change", () => onChange(input.checked));
     const text = document.createElement("strong");
     text.textContent = label;
@@ -1861,11 +2070,11 @@
     return wrapper;
   }
 
-  function stockField(label, value, onChange) {
+  function stockField(label, value, onChange, maximum = 0xFFFF) {
     const wrapper = document.createElement("label");
     wrapper.className = "stock-row";
     wrapper.append(span(label));
-    wrapper.append(numberInput(0, 0xFFFF, value, onChange));
+    wrapper.append(numberInput(0, maximum, value, onChange));
     return wrapper;
   }
 

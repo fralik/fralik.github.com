@@ -28,7 +28,23 @@
         <div class="panel-title">
           <h2 id="resourcesTitle">Resources</h2>
         </div>
+        <label id="resourcePlayerField" class="resource-player" hidden>
+          <span>Player</span>
+          <select id="resourcePlayer"></select>
+        </label>
         <div id="resourcesGrid" class="resource-grid muted">Open a save to edit resources.</div>
+      </section>
+
+      <section id="puzzlePanel" class="panel filters-panel" aria-labelledby="puzzleTitle" hidden>
+        <div class="panel-title">
+          <h2 id="puzzleTitle">Buried Artifact</h2>
+        </div>
+        <label>
+          <span>Player</span>
+          <select id="puzzlePlayer"></select>
+        </label>
+        <div id="puzzleStatus" class="muted" role="status"></div>
+        <button id="revealPuzzleButton" type="button">Reveal Puzzle Map</button>
       </section>
 
       <section id="filtersPanel" class="panel filters-panel" aria-labelledby="filtersTitle">
